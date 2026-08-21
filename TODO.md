@@ -1,5 +1,9 @@
 # TODO
 
+- [ ] [`ticket-003`](project/ticket-003/README.md) — publish the Subactor-first
+  profile, protocol, host adapters and reference tools. Status:
+  `IN_PROGRESS / EDIT`; workstream: `integration`; Issue #6.
+
 - [ ] [`ticket-002`](project/ticket-002/README.md) — add governed Linux and
   Windows CI check instances. Status: `IN_PROGRESS / EDIT`; workstream:
   `infrastructure`; Issue #2.

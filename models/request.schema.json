@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wellmanifest.dev/llm/v1/request.schema.json",
+  "title": "wellmanifest/llm operation request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "requestId", "operation", "intent", "limits", "authority"],
+  "properties": {
+    "schema": {"const": "wellmanifest.llm-request/v1"},
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "operation": {
+      "enum": [
+        "profile.resolve",
+        "knowledge.resolve",
+        "artifact.resolve",
+        "observation.read",
+        "research.plan",
+        "llm.invoke",
+        "validation.run",
+        "receipt.write"
+      ]
+    },
+    "intent": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 16,
+      "additionalProperties": {
+        "type": ["string", "number", "integer", "boolean", "array", "object", "null"]
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxItems", "maxBytes", "timeoutSeconds"],
+      "properties": {
+        "maxItems": {"type": "integer", "minimum": 1, "maximum": 50},
+        "maxBytes": {"type": "integer", "minimum": 256, "maximum": 1048576},
+        "timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 300}
+      }
+    },
+    "authority": {
+      "enum": ["read-only", "advisory", "mutation-with-grant"]
+    },
+    "grantRef": {
+      "type": "string",
+      "pattern": "^grant://[A-Za-z0-9._/-]+$"
+    },
+    "contextRefs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^(knowledge|artifact|observation)://[^?#]+$"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"authority": {"const": "mutation-with-grant"}}},
+      "then": {"required": ["grantRef"]},
+      "else": {"not": {"required": ["grantRef"]}}
+    }
+  ]
+}

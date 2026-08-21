@@ -1,0 +1,98 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-003",
+  "summary": "Publish Subactor-first LLM protocol and adapters",
+  "workstream": "integration",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-003/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "models/**",
+    "docs/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "placement": {
+    "home": "wellmanifest",
+    "shape": "domain_pack",
+    "runtimeOwner": "subactor",
+    "adopt": ["wellmanifest/new-project", "wellmanifest/dsl", "wellmanifest/logs"]
+  },
+  "delivery": {
+    "acceptedBaseSha": "cdcc43f6a0c894b5917f6de46f13793e408c0096",
+    "targetBranch": "main",
+    "outcome": "Publish a provider-neutral Subactor-first LLM profile, operation protocol, host adapters, safe installer and deterministic conformance suite",
+    "nonGoals": [
+      "Implement or move Subactor runtime services into wellmanifest",
+      "Select one mandatory LLM provider or model",
+      "Grant mutation or merge authority to an LLM",
+      "Put credentials in model context, URLs, logs or receipts",
+      "Require MCP when a bounded semantic fallback is necessary"
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 15,
+      "maxAffectedComponents": 5,
+      "maxPublicInterfaceChanges": 3,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Combine host discovery, strict JSON contracts, MCP-first semantic operations, Subactor runtime mediation and redacted receipts; keep prompts advisory and providers policy-selected",
+      "components": [
+        {
+          "name": "profile-contract",
+          "paths": ["models/llm-profile.schema.json", "models/subactor-first.v1.json"]
+        },
+        {
+          "name": "operation-envelopes",
+          "paths": ["models/request.schema.json", "models/response.schema.json"]
+        },
+        {
+          "name": "normative-guidance",
+          "paths": ["docs/ARCHITECTURE.md", "docs/PROTOCOL.md", "docs/ADOPTION.md"]
+        },
+        {"name": "host-adapters", "paths": ["docs/adapters/**"]},
+        {"name": "reference-tools", "paths": ["docs/tools/**"]}
+      ],
+      "responsibilityChanges": true,
+      "interfaceChanges": [
+        "Publish wellmanifest.llm-profile/v1",
+        "Publish wellmanifest.llm-request/v1",
+        "Publish wellmanifest.llm-response/v1"
+      ],
+      "dataChanges": [
+        "Represent ordered Subactor-first policy as a strict JSON profile",
+        "Represent tool requests and results as bounded provider-neutral envelopes",
+        "Represent evidence as immutable references and redacted receipts"
+      ],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Remove the fifteen integration-owned files while preserving the governed repository and prior decision record"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-05",
+        "commands": [
+          "python3 docs/tools/conformance.py --all",
+          "python3 docs/tools/install.py --host all --target ."
+        ],
+        "evidence": "project/ticket-003/ai-codex-logs.txt"
+      },
+      {
+        "criterion": "AC-06",
+        "commands": ["./project/governance-check.sh --actor agent", "git diff --check"],
+        "evidence": "project/ticket-003/ai-codex-logs.txt"
+      }
+    ]
+  }
+}

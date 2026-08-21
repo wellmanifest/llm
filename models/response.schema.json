@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wellmanifest.dev/llm/v1/response.schema.json",
+  "title": "wellmanifest/llm operation response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "requestId", "operation", "status", "results", "receipt"],
+  "properties": {
+    "schema": {"const": "wellmanifest.llm-response/v1"},
+    "requestId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"
+    },
+    "operation": {
+      "enum": [
+        "profile.resolve",
+        "knowledge.resolve",
+        "artifact.resolve",
+        "observation.read",
+        "research.plan",
+        "llm.invoke",
+        "validation.run",
+        "receipt.write"
+      ]
+    },
+    "status": {"enum": ["ok", "gap", "denied", "error"]},
+    "results": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "mediaType", "digest"],
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^(knowledge://subactor/[^?#]+/v[0-9]+|artifact://subactor/[^?#]+/r[0-9]+|observation://[^?#]+)$"
+          },
+          "mediaType": {"type": "string", "minLength": 3},
+          "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "summary": {"type": "string", "maxLength": 2000}
+        }
+      }
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "query", "deduplicateAgainst"],
+      "properties": {
+        "method": {"enum": ["live-observation", "internet-research"]},
+        "query": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "deduplicateAgainst": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^knowledge://subactor/[^?#]+/v[0-9]+$"}
+        }
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redacted", "transport", "route", "model", "startedAt", "finishedAt"],
+      "properties": {
+        "redacted": {"const": true},
+        "transport": {"enum": ["mcp", "https", "cli", "file"]},
+        "route": {"type": "string", "minLength": 1, "maxLength": 200},
+        "model": {"type": ["string", "null"], "maxLength": 200},
+        "startedAt": {"type": "string", "format": "date-time"},
+        "finishedAt": {"type": "string", "format": "date-time"},
+        "grantRef": {"type": "string", "pattern": "^grant://[A-Za-z0-9._/-]+$"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "gap"}}},
+      "then": {"required": ["gap"]},
+      "else": {"not": {"required": ["gap"]}}
+    }
+  ]
+}

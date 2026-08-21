@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wellmanifest.dev/llm/v1/llm-profile.schema.json",
+  "title": "wellmanifest/llm Subactor-first profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema",
+    "profileId",
+    "version",
+    "placement",
+    "bootstrap",
+    "transport",
+    "workflow",
+    "authority",
+    "security",
+    "limits",
+    "receipt"
+  ],
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operation", "required"],
+      "properties": {
+        "id": {"type": "string"},
+        "operation": {"type": "string"},
+        "required": {"type": "boolean"},
+        "when": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "properties": {
+    "$schema": {"const": "./llm-profile.schema.json"},
+    "schema": {"const": "wellmanifest.llm-profile/v1"},
+    "profileId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["home", "shape", "runtimeOwner", "adopt"],
+      "properties": {
+        "home": {"const": "wellmanifest"},
+        "shape": {"const": "domain_pack"},
+        "runtimeOwner": {"const": "subactor"},
+        "adopt": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^wellmanifest/[a-z0-9-]+$"}
+        }
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["marker", "profileTarget", "schemaTargets", "adapterTargets"],
+      "properties": {
+        "marker": {"const": "SUBACTOR-FIRST"},
+        "profileTarget": {"const": ".wellmanifest/llm.json"},
+        "schemaTargets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["profile", "request", "response"],
+          "properties": {
+            "profile": {"const": ".wellmanifest/llm-profile.schema.json"},
+            "request": {"const": ".wellmanifest/request.schema.json"},
+            "response": {"const": ".wellmanifest/response.schema.json"}
+          }
+        },
+        "adapterTargets": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["codex", "claude", "gemini", "cursor", "copilot", "generic"],
+          "properties": {
+            "codex": {"const": "AGENTS.md"},
+            "claude": {"const": "CLAUDE.md"},
+            "gemini": {"const": "GEMINI.md"},
+            "cursor": {"const": ".cursor/rules/subactor-first.mdc"},
+            "copilot": {"const": ".github/copilot-instructions.md"},
+            "generic": {"const": "SUBACTOR.md"}
+          }
+        }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preferred", "fallbacks", "semanticEnvelope"],
+      "properties": {
+        "preferred": {"const": "mcp"},
+        "fallbacks": {
+          "const": ["https", "cli", "file"]
+        },
+        "semanticEnvelope": {"const": "application/json"}
+      }
+    },
+    "workflow": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "prefixItems": [
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "discover"}, "operation": {"const": "profile.resolve"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "knowledge"}, "operation": {"const": "knowledge.resolve"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "artifact"}, "operation": {"const": "artifact.resolve"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "observe"}, "operation": {"const": "observation.read"}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "research"}, "operation": {"const": "research.plan"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "invoke"}, "operation": {"const": "llm.invoke"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "validate"}, "operation": {"const": "validation.run"}, "required": {"const": true}}}]},
+        {"allOf": [{"$ref": "#/$defs/step"}, {"properties": {"id": {"const": "receipt"}, "operation": {"const": "receipt.write"}, "required": {"const": true}}}]}
+      ],
+      "items": false
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["llm", "mutation", "merge"],
+      "properties": {
+        "llm": {"const": "advisory"},
+        "mutation": {"const": "external-grant"},
+        "merge": {"const": "trusted-validator"}
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credentials", "secretReferences", "secretsInContext", "secretsInUris", "secretsInLogs"],
+      "properties": {
+        "credentials": {"const": "out-of-context"},
+        "secretReferences": {"const": "opaque"},
+        "secretsInContext": {"const": false},
+        "secretsInUris": {"const": false},
+        "secretsInLogs": {"const": false}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxKnowledgeItems", "maxContextBytes", "maxObservationSeconds", "maxExternalQueries"],
+      "properties": {
+        "maxKnowledgeItems": {"type": "integer", "minimum": 1, "maximum": 50},
+        "maxContextBytes": {"type": "integer", "minimum": 1024, "maximum": 1048576},
+        "maxObservationSeconds": {"type": "integer", "minimum": 1, "maximum": 300},
+        "maxExternalQueries": {"type": "integer", "minimum": 0, "maximum": 20}
+      }
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["redacted", "immutableRefs", "recordRoute", "recordModel"],
+      "properties": {
+        "redacted": {"const": true},
+        "immutableRefs": {"const": true},
+        "recordRoute": {"const": true},
+        "recordModel": {"const": true}
+      }
+    }
+  }
+}
