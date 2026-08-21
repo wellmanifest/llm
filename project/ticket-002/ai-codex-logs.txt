@@ -1,0 +1,3 @@
+2026-08-21T21:40:00Z VERIFY required jobs: test, windows-governance
+2026-08-21T21:40:00Z VERIFY ./project/governance-check.sh --actor agent: GOV-PASS
+2026-08-21T21:40:00Z VERIFY git diff --check: passed
