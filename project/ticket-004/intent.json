@@ -1,0 +1,73 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-004",
+  "summary": "Publish README and Make verification entrypoints",
+  "workstream": "governance",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-004/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "README.md",
+    "CHANGELOG.md",
+    "Makefile"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "placement": {
+    "home": "wellmanifest",
+    "shape": "domain_pack",
+    "runtimeOwner": "subactor",
+    "adopt": ["wellmanifest/new-project", "wellmanifest/dsl", "wellmanifest/logs"]
+  },
+  "delivery": {
+    "acceptedBaseSha": "182e353c48f5a4bab6652ef280ae8e71dabc4fa9",
+    "targetBranch": "main",
+    "outcome": "Publish the final README and guarded Make entrypoints for the integrated Subactor-first v1 contract",
+    "nonGoals": [
+      "Change normative schemas, profiles, adapters or reference tools",
+      "Choose an LLM provider or model",
+      "Install adapters into a consumer repository during publication"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Expose verification and guarded adoption through a root Makefile while keeping all normative semantics in the integrated contract files",
+      "components": [
+        {"name": "project-entrypoints", "paths": ["README.md", "CHANGELOG.md", "Makefile"]}
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the three governance-owned entrypoint files without changing the published v1 contract"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-02",
+        "commands": ["make check", "make governance", "make verify"],
+        "evidence": "project/ticket-004/ai-codex-logs.txt"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": ["make install HOST=codex TARGET=."],
+        "evidence": "project/ticket-004/ai-codex-logs.txt"
+      }
+    ]
+  }
+}
