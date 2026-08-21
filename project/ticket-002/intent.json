@@ -1,0 +1,66 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-002",
+  "summary": "Add governed CI checks for llm standard",
+  "workstream": "infrastructure",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-002/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".github/workflows/ci.yml"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "placement": {
+    "home": "wellmanifest",
+    "shape": "domain_pack",
+    "runtimeOwner": "subactor",
+    "adopt": ["wellmanifest/new-project", "wellmanifest/dsl", "wellmanifest/logs"]
+  },
+  "delivery": {
+    "acceptedBaseSha": "9e1308d1e963c8a4ea55ba66bd6106732d715694",
+    "targetBranch": "main",
+    "outcome": "Publish the repository-instance Linux and Windows governance checks declared by the adopted standard",
+    "nonGoals": [
+      "Change managed governance code",
+      "Implement the LLM integration standard in this infrastructure slice",
+      "Add runtime dependencies"
+    ],
+    "complexity": "XS",
+    "estimatedMinutes": 10,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Bind the target repository to the already declared test and windows-governance job names",
+      "components": [
+        {"name": "continuous-integration", "paths": [".github/workflows/ci.yml"]}
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the target CI workflow; the missing-instance governance finding will return"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": ["./project/governance-check.sh --actor agent", "git diff --check"],
+        "evidence": "project/ticket-002/ai-codex-logs.txt"
+      }
+    ]
+  }
+}

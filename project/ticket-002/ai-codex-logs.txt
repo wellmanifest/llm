@@ -1,0 +1,4 @@
+2026-08-21T21:40:00Z VERIFY required jobs: test, windows-governance
+2026-08-21T21:40:00Z VERIFY ./project/governance-check.sh --actor agent: GOV-PASS
+2026-08-21T21:40:00Z VERIFY git diff --check: passed
+2026-08-21T21:42:00Z REPAIR Windows checkout must disable autocrlf before checkout so managed LF digests remain stable
