@@ -4,5 +4,9 @@
   Windows CI check instances. Status: `IN_PROGRESS / EDIT`; workstream:
   `infrastructure`; Issue #2.
 
+- [ ] [`ticket-001`](project/ticket-001/README.md) — document the layered
+  Subactor-first LLM integration decision. Status: `IN_PROGRESS / EDIT`;
+  workstream: `governance`; Issue #4.
+
 <!-- TICKETS:START -->
 <!-- TICKETS:END -->

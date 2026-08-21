@@ -1,0 +1,72 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-001",
+  "summary": "Establish Subactor-first LLM project guidance",
+  "workstream": "governance",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-001/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "README.md",
+    "CHANGELOG.md",
+    ".governance/manifest.json"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "placement": {
+    "home": "wellmanifest",
+    "shape": "domain_pack",
+    "runtimeOwner": "subactor",
+    "adopt": ["wellmanifest/new-project", "wellmanifest/dsl", "wellmanifest/logs"]
+  },
+  "delivery": {
+    "acceptedBaseSha": "9b3ec66e831bca99fcb8fcb5ac66829a10ee9a9f",
+    "targetBranch": "main",
+    "outcome": "Document the layered contract and ownership boundary while reserving the repository Make entrypoint",
+    "nonGoals": [
+      "Publish the machine schemas or reference conformance implementation in this slice",
+      "Change Subactor runtime code",
+      "Claim that a prompt alone can enforce tool order or authority"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Document the five-layer contract and reserve the Make entrypoint before publishing its machine-readable integration slice",
+      "components": [
+        {"name": "project-guidance", "paths": ["README.md", "CHANGELOG.md"]},
+        {
+          "name": "repository-governance-instance",
+          "paths": [".governance/manifest.json"]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the documentation slice while preserving the governed repository baseline"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": ["./project/governance-check.sh --actor agent", "git diff --check"],
+        "evidence": "project/ticket-001/ai-codex-logs.txt"
+      }
+    ]
+  }
+}
