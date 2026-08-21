@@ -1,0 +1,10 @@
+2026-08-21T21:55:00Z VERIFY JSON parse for four models: passed
+2026-08-21T21:55:00Z VERIFY JSON Schema 2020-12 meta-check and profile validation: passed
+2026-08-21T21:55:00Z VERIFY python3 docs/tools/conformance.py --all: PASS
+2026-08-21T21:55:00Z VERIFY installer dry-run for all hosts: passed without writes
+2026-08-21T21:55:00Z VERIFY isolated apply + second apply: existing AGENTS preserved; all targets unchanged on second run
+2026-08-21T21:55:00Z VERIFY ./project/governance-check.sh --actor agent: GOV-PASS
+2026-08-21T21:55:00Z VERIFY git diff --check: passed
+2026-08-21T21:58:00Z REPAIR installer now copies a self-contained profile plus all three schemas so relative schema resolution has no network dependency
+2026-08-21T21:58:00Z VERIFY installed profile validates against installed schema: passed
+2026-08-21T21:58:00Z VERIFY ruff check and ruff format --check docs/tools: passed
