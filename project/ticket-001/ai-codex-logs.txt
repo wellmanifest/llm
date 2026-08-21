@@ -1,0 +1,3 @@
+2026-08-21T21:45:00Z VERIFY README layered decision and HOME/ADOPT boundary
+2026-08-21T21:45:00Z VERIFY ./project/governance-check.sh --actor agent: GOV-PASS
+2026-08-21T21:45:00Z VERIFY git diff --check: passed
