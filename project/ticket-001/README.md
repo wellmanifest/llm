@@ -2,8 +2,8 @@
 
 - **ID**: ticket-001
 - **Owner**: agent:codex under SESSION_EXECUTION_AUTHORIZATION
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: DONE
 - **Created**: 2026-08-21
 
 ## Goal and scope
@@ -26,3 +26,12 @@ instance's project guidance and reserve its Make entrypoint.
 - Human participant: authorization was supplied in the active session; no
   `user-*` file was created or modified.
 - Agent participant: [ai-codex.md](ai-codex.md)
+
+## Publication evidence
+
+- Linux, Windows and remote lifecycle checks passed on exact head
+  `ef735935e1b6345ac7216f9d1e2cd2b91bfa560a`.
+- Direct Validator review approved that exact head and merged PR #5 as
+  `cdcc43f6a0c894b5917f6de46f13793e408c0096`.
+- Protected `main` was read back with the documentation slice and its source
+  branch deleted before this closure.
