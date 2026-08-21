@@ -1,0 +1,5 @@
+2026-08-22T00:05:00+02:00 VERIFY make check: PASS wellmanifest/llm v1
+2026-08-22T00:05:00+02:00 VERIFY make governance: GOV-PASS
+2026-08-22T00:05:00+02:00 VERIFY make verify: conformance, governance and diff check passed
+2026-08-22T00:05:00+02:00 VERIFY make install-dry-run HOST=all TARGET=.: no writes, ten planned artifacts
+2026-08-22T00:05:00+02:00 VERIFY make install without CONFIRM_APPLY=1: refused with exit 2
