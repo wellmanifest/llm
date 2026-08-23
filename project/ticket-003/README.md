@@ -2,8 +2,8 @@
 
 - **ID**: ticket-003
 - **Owner**: agent:codex under SESSION_EXECUTION_AUTHORIZATION
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: DONE
 - **Created**: 2026-08-21
 
 ## Goal and scope
