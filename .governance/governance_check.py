@@ -2153,6 +2153,34 @@ def check_changed_file(root: Path, raw: str, report: Report) -> None:
         check_decision_log_file(root, raw, text, report)
 
 
+def check_agent_hosts(root: Path, actor: str, report: Report) -> None:
+    """Prove the host-agnostic contract is installed, not merely documented (ticket-106)."""
+    if not any(
+        (root / candidate).is_file()
+        for candidate in ("governance/agent-hosts.json", ".governance/agent-hosts.json")
+    ):
+        return
+    scripts_dir = Path(__file__).resolve().parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from agent_host_check import audit as agent_host_audit
+    except ImportError:
+        # The validator is a managed file, so its absence is a sync defect
+        # rather than a host-contract finding.
+        report.add(
+            "GOV-SYNC-001",
+            "Managed agent host validator is missing next to governance_check.py.",
+            "Restore agent_host_check.py through an explicit standard upgrade.",
+            [".governance/agent_host_check.py"],
+        )
+        return
+    for finding in agent_host_audit(root, actor)["findings"]:
+        report.add(
+            finding["code"], finding["message"], finding["remediation"], finding["paths"],
+        )
+
+
 def check_decision_log_file(root: Path, raw: str, text: str, report: Report) -> None:
     """Validate recomputable decision records (C-DECISION / ticket-031)."""
     scripts_dir = Path(__file__).resolve().parent
@@ -3333,6 +3361,7 @@ def run_governance_checks(
     check_lock(root, lock_path, manifest, report)
     check_policy_dsl(root, report)
     check_required_checks_declaration(root, report)
+    check_agent_hosts(root, args.actor, report)
     check_required_files(root, manifest, report)
     check_domain_contracts(root, manifest, report)
     check_docker_image_references(root, manifest, report)
