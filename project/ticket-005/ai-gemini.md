@@ -4,12 +4,9 @@
 - **Role**: Standard Adopter
 - **Authorization**: `SESSION_EXECUTION_AUTHORIZATION`
 
-## Plan
+## Outcome
 
-1. Scaffold and populate ticket-005.
-2. Run `create_adoption_lock.py` with revision `5cc475f6200df9f8c1d045240277c6eaa2f9a642` and `--upgrade`.
-3. Update `.governance/required-checks.json` with truthful check names for `wellmanifest/llm`.
-4. Update `.governance/manifest.json` workstream ownership for governance files.
-5. Run `./scripts/install-agent-hosts.sh` and verify with `python3 .governance/agent_host_check.py`.
-6. Run `./project/governance-check.sh --actor agent --base 32d901d141e97d10ba8e75e33d0db4fc17ba0a0a --head HEAD`.
-7. Deliver via PR.
+- Adopted `wellmanifest/new-project` 0.18.6 at `01397097ac53a01b2dd544f0b5908d22d1b526d5`.
+- Installed host contracts and fail-closed pre-commit hook.
+- Added `governance / enforce` CI job and updated `required-checks.json`.
+- Approved by Validator agent via review 5002463558 and merged as 5032d0c.
