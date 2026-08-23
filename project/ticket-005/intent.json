@@ -32,7 +32,7 @@
   "conflictsWith": [],
   "integrationTicket": null,
   "delivery": {
-    "acceptedBaseSha": "32d901d141e97d10ba8e75e33d0db4fc17ba0a0a",
+    "acceptedBaseSha": "32d901d842a4a35f650b46dad5eaa4b43cf538bc",
     "targetBranch": "main",
     "outcome": "This repository runs the managed governance gate in CI and every LLM host that opens it loads the same fail-closed contract, enforced by an installed pre-commit hook rather than by a Markdown instruction.",
     "nonGoals": [
