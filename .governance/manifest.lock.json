@@ -1,11 +1,13 @@
 {
   "managedFiles": {
+    ".aider.conf.yml": "756af4477d7a0d39361919c957ee954807259f15cabf4dcabde81677eac6efd6",
     ".cursor/rules/new-project-standard.mdc": "72699a5cb3718be9a50603eda9c8a6d960f21b1949fdfe2b35013385b22f9afe",
-    ".githooks/pre-commit": "2b266d7ba528dc529519febf84e046ff053279e151beecf837d5bf3fdc6ec938",
+    ".githooks/pre-commit": "73bad0ce8bb2617ba089e9558ccee1a8fdfee3ee580ccd1c13a6e4d3471e3307",
+    ".github/copilot-instructions.md": "b31f9ba957ce108a83851f48f8dbff8b4301d1c744a77fe76914e6bb8499aca3",
     ".github/workflows/new-project-governance.yml": "dd9cd4e178a60550f400d7733804e38902e9f474a8386d3cb37afdbe5d0f21d8",
-    ".governance/agent-hosts.json": "2d4d767dbddd8473a94f59a8cc1f798680b45fbfc0dce8f672a158476aa28107",
-    ".governance/agent-hosts.schema.json": "3584ce79a7acb92daef8263db32c9dc3725bd4424321a493b6fc0ab56a63d144",
-    ".governance/agent_host_check.py": "bac26e448e0f82c161176e67d2fc85c83f22788bbae867448727c2da962db8bd",
+    ".governance/agent-hosts.json": "d4565102018a634307d941173fdea5da04c2cce494a979199a463d318dab41a0",
+    ".governance/agent-hosts.schema.json": "46a3e39eb35f5ad34363a5aa1394cc0db2304f48ee8d816c80615dc565c3c360",
+    ".governance/agent_host_check.py": "19194749dda869308a5804218a7642b265c25e010a6f2fbcfe2ab827b09c8681",
     ".governance/approval-evidence.schema.json": "488dee5a4bfbf221206acc45947fce5283eb5e80614ec0ef478b5d618cc4eb83",
     ".governance/branch_lifecycle_check.py": "02e80224fb659feccf39ffa6afebd053d68f0f44137e842ea9cff6e7170b8c9d",
     ".governance/change-evaluation.schema.json": "d16c9cbc9646ad7d98b7a5ecd56594e4572df968a0ee0c63e969b2a8c3b9490a",
@@ -22,12 +24,13 @@
     ".governance/error/GOV-WORKSPACE-LIFECYCLE.md": "72436684572d784327a340d90ca96d9fd2927519e02334036fab402e9c1d8262",
     ".governance/error/GOV-WORKTREE-OVERLAP.md": "b430b153683c22a007d9e86aa1e89394eba7c7e8bbdd286342786df090f9d289",
     ".governance/error/README.md": "e8486dd29f52ca3fee96ed6881a62c38141864cde5aa1adea2b16d22b2feefaa",
+    ".governance/generate_required_checks.py": "691c0b367d183aa9fafeb93303fc091053d61d3bee20695b2c9e7d0807fc5a47",
     ".governance/governance_check.py": "f11d1ac57bc39af4862ca175cfa5a5d172bdc9c5d956d7b668cb00e40af55040",
     ".governance/intent.schema.json": "4fd747c059adb934ac6cf2f82e8d9d7211f3b3b0c3da5fc785b231a5ed9d0d8f",
     ".governance/lock.schema.json": "ad80c98f800a4a3310870336dcdaf0aa689cc4988f71084d25d76bea2df1242f",
-    ".governance/manifest.base.json": "09031e9c775d1ce4bc2ddbe4020e709a86cb8a323958e81818826676f4f30b8f",
+    ".governance/manifest.base.json": "95b59a2ad3442e357c42a95b607768589774ee18e34414470500ac313a423a66",
     ".governance/manifest.schema.json": "06636922802c9529b97603f30083edda61b66dbbb01643eaeb8f7c5a03dd55b5",
-    ".governance/package-manifest.json": "055a1e8d9b45f0476ab565b79177ff4383be2b5ac56f38ee77718005b068a797",
+    ".governance/package-manifest.json": "817bc458f63f7039b0b6f65973d653ec2012e53915c482e13e197db172a46ad5",
     ".governance/remediation-intent.schema.json": "ab895e7ca0d83aef4c7d3eab674f14bcb0e0a0375298fdb3496d535dc9184d66",
     ".governance/remediation-intent.template.dsl.json": "a3eb01c54fe678f3fcebb88103ac4eb02f5dd24016b2ba9552814b5e442dfb34",
     ".governance/remediation_intent.py": "39576af00834816179ba266991342c7bea71ea0653af953e47a45958889b9a36",
@@ -45,7 +48,7 @@
     "project/governance-check.sh": "1a7bbb6d261ad9e2f440ed1f2a910bca718e726ff0d3c49ce18d137c5c8c6692",
     "project/new-ticket.sh": "c060722d77b4f0df3d7679aecc1772d564e5d6fceedb76aefd2a7a5ea11001da",
     "project/readme.sh": "b41a9c88374e6de0439284a4561fb11b1b482039bc5ba1bcf6683fd59b1a3968",
-    "scripts/install-agent-hosts.sh": "f69a3bf3e6d875786cb53b0a465862441bcd3a5e4b1dbc33cf16fed4cbc8d494",
+    "scripts/install-agent-hosts.sh": "6a0878986f46d3379e12501b2bbdaf7726d71294da6ea3831ad1224d56809ee6",
     "scripts/runtime.sh": "8d5c91808d3c126fc84018a12f0b39dd49194fb8b01c5e024932ff9cf2a7a7e2",
     "worktree-guard.yaml": "a5d1b031332a74c529a43202d33aa15853cea195a6f22b17455ffa0fa34d163b"
   },
@@ -54,7 +57,7 @@
     "id": "wellmanifest/new-project",
     "publicationStatus": "published",
     "sourceRepository": "wellmanifest/new-project",
-    "sourceRevision": "5cc475f6200df9f8c1d045240277c6eaa2f9a642",
-    "version": "0.18.5"
+    "sourceRevision": "01397097ac53a01b2dd544f0b5908d22d1b526d5",
+    "version": "0.18.6"
   }
 }

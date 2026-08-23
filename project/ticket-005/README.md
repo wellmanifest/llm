@@ -1,4 +1,4 @@
-# Ticket 005: Adopt new-project standard 0.18.5
+# Ticket 005: Adopt new-project standard 0.18.6
 
 - **ID**: ticket-005
 - **Owner**: agent:gemini under SESSION_EXECUTION_AUTHORIZATION
@@ -8,7 +8,7 @@
 
 ## Goal and scope
 
-Adopt published `wellmanifest/new-project` 0.18.5 into `wellmanifest/llm` in one atomic transaction through `create_adoption_lock.py`.
+Adopt published `wellmanifest/new-project` 0.18.6 into `wellmanifest/llm` in one atomic transaction through `create_adoption_lock.py`.
 Brings the host-agnostic contract (CLAUDE.md, GEMINI.md, Cursor rule, pre-commit hook, agent-hosts.json validator) and `governance / enforce` CI job.
 
 ## Acceptance criteria

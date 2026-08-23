@@ -3,7 +3,12 @@
   "note": "Single source of truth for the host-agnostic agent contract (AGENTS.md rule 22). scripts/agent_host_check.py proves these files are present, that the fail-closed hook is installed and active, and that the packaging metadata a repository already carries actually runs the gate. Instruction files are advisory to a model; the hook, the CI job and the packaging lifecycle bindings declared here are the parts that are not. Adding a host here without adding it to governance/package-manifest.json makes the requirement unshippable, so both change together.",
   "hook": {
     "path": ".githooks/pre-commit",
-    "hooksPathConfig": ".githooks"
+    "hooksPathConfig": ".githooks",
+    "runtimeFiles": [
+      ".governance/worktree_guard.py",
+      ".governance/worktree_overlap_check.py",
+      "worktree-guard.yaml"
+    ]
   },
   "hosts": [
     {
@@ -35,6 +40,21 @@
       "file": ".cursor/rules/new-project-standard.mdc",
       "readers": [
         "Cursor"
+      ]
+    },
+    {
+      "id": "aider",
+      "file": ".aider.conf.yml",
+      "readers": [
+        "aider"
+      ]
+    },
+    {
+      "id": "copilot",
+      "file": ".github/copilot-instructions.md",
+      "readers": [
+        "GitHub Copilot",
+        "Copilot Chat in VS Code and JetBrains"
       ]
     }
   ],

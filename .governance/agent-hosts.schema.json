@@ -12,10 +12,16 @@
     "hook": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "hooksPathConfig"],
+      "required": ["path", "hooksPathConfig", "runtimeFiles"],
       "properties": {
         "path": { "type": "string", "pattern": "^[^/][^\\\\]*$" },
-        "hooksPathConfig": { "type": "string", "minLength": 1 }
+        "hooksPathConfig": { "type": "string", "minLength": 1 },
+        "runtimeFiles": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[^/][^\\\\]*$" }
+        }
       }
     },
     "hosts": {

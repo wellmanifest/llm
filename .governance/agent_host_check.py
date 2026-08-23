@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tomllib
@@ -97,7 +98,7 @@ def check_hook(root: Path, contract: dict[str, Any], actor: str) -> list[Finding
             "Bootstrap with ./scripts/install-agent-hosts.sh --source <hub> --target <repo>, or adopt the current standard package.",
             [hook_relative],
         ))
-    elif not hook_path.stat().st_mode & 0o111:
+    elif os.name != "nt" and not hook_path.stat().st_mode & 0o111:
         findings.append(Finding(
             "GOV-AGENT-HOST-005",
             f"Fail-closed pre-commit hook is not executable: {hook_relative}",

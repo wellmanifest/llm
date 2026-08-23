@@ -48,10 +48,13 @@
     { "source": "template/files/CLAUDE.template.md", "target": "CLAUDE.md", "strategy": "managed", "executable": false },
     { "source": "template/files/GEMINI.template.md", "target": "GEMINI.md", "strategy": "managed", "executable": false },
     { "source": "template/files/cursor-rule.template.mdc", "target": ".cursor/rules/new-project-standard.mdc", "strategy": "managed", "executable": false },
-    { "source": ".githooks/pre-commit", "target": ".githooks/pre-commit", "strategy": "managed", "executable": true },
+    { "source": "template/files/pre-commit.template.sh", "target": ".githooks/pre-commit", "strategy": "managed", "executable": true },
     { "source": "governance/agent-hosts.json", "target": ".governance/agent-hosts.json", "strategy": "managed", "executable": false },
     { "source": "governance/agent-hosts.schema.json", "target": ".governance/agent-hosts.schema.json", "strategy": "managed", "executable": false },
     { "source": "scripts/agent_host_check.py", "target": ".governance/agent_host_check.py", "strategy": "managed", "executable": false },
-    { "source": "scripts/install-agent-hosts.sh", "target": "scripts/install-agent-hosts.sh", "strategy": "managed", "executable": true }
+    { "source": "scripts/install-agent-hosts.sh", "target": "scripts/install-agent-hosts.sh", "strategy": "managed", "executable": true },
+    { "source": "scripts/generate_required_checks.py", "target": ".governance/generate_required_checks.py", "strategy": "managed", "executable": false },
+    { "source": "template/files/aider.template.yml", "target": ".aider.conf.yml", "strategy": "managed", "executable": false },
+    { "source": "template/files/copilot-instructions.template.md", "target": ".github/copilot-instructions.md", "strategy": "managed", "executable": false }
   ]
 }

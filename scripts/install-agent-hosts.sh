@@ -80,6 +80,8 @@ contract = json.load(open(sys.argv[1], encoding="utf-8"))
 for host in contract["hosts"]:
     print(f"{host['file']}\t0")
 print(f"{contract['hook']['path']}\t1")
+for runtime_file in contract["hook"]["runtimeFiles"]:
+    print(f"{runtime_file}\t0")
 PY
 }
 
@@ -99,7 +101,11 @@ import json, sys
 manifest = json.load(open(sys.argv[1], encoding="utf-8"))
 contract = json.load(open(sys.argv[2], encoding="utf-8"))
 contract_source = sys.argv[3]
-governed = {host["file"] for host in contract["hosts"]} | {contract["hook"]["path"]}
+governed = (
+    {host["file"] for host in contract["hosts"]}
+    | {contract["hook"]["path"]}
+    | set(contract["hook"]["runtimeFiles"])
+)
 for item in manifest["files"]:
     if item["target"] in governed or item["source"] == contract_source:
         print(f"{item['source']}\t{item['target']}\t{int(bool(item['executable']))}")
