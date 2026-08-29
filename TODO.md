@@ -1,5 +1,8 @@
 # TODO
 
+- [ ] [`ticket-006`](project/ticket-006/README.md) — ignore Python test
+  artifacts. Status: `IN_PROGRESS / EDIT`; workstream: `governance`.
+
 - [ ] [`ticket-004`](project/ticket-004/README.md) — publish final README and
   guarded Make verification/install entrypoints. Status: `IN_PROGRESS / EDIT`;
   workstream: `governance`; Issue #9.
