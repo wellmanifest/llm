@@ -1,0 +1,82 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-006",
+  "summary": "Ignore Python test artifacts",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-006/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".gitignore",
+    ".governance/manifest.json"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "ee544f28bea9abd1e1758a8fea1328b0cd93ec96",
+    "targetBranch": "main",
+    "outcome": "Python bytecode and test caches stop appearing as untracked files, and governance owns .gitignore so later hygiene changes have a declared workstream.",
+    "nonGoals": [
+      "Changing llm domain schemas, adapters or Make targets.",
+      "Ignoring virtualenvs, secrets or editor files beyond Python caches.",
+      "Adopting a new new-project revision."
+    ],
+    "complexity": "XS",
+    "estimatedMinutes": 10,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add a root .gitignore for Python caches and declare that path on the governance workstream in the extendable manifest. No runtime or contract files change.",
+      "components": [
+        {
+          "name": "repo-hygiene",
+          "paths": [
+            ".gitignore",
+            ".governance/manifest.json"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the ticket commit; .gitignore and the ownedPaths addition leave together."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-1",
+        "commands": [
+          "git check-ignore -v __pycache__/ foo.pyc .pytest_cache/ .ruff_cache/"
+        ],
+        "evidence": "Each path is ignored by .gitignore."
+      },
+      {
+        "criterion": "AC-2",
+        "commands": [
+          "./project/governance-check.sh --actor agent"
+        ],
+        "evidence": "GOV-PASS on the ticket branch."
+      }
+    ]
+  }
+}
