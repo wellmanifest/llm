@@ -43,6 +43,7 @@
       },
       "governance": {
         "ownedPaths": [
+          ".gitignore",
           ".cursor/rules/**",
           ".githooks/**",
           ".governance/**",
