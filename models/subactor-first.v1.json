@@ -32,18 +32,57 @@
   },
   "transport": {
     "preferred": "mcp",
-    "fallbacks": ["https", "cli", "file"],
+    "fallbacks": [
+      "https",
+      "cli",
+      "file"
+    ],
     "semanticEnvelope": "application/json"
   },
   "workflow": [
-    {"id": "discover", "operation": "profile.resolve", "required": true},
-    {"id": "knowledge", "operation": "knowledge.resolve", "required": true},
-    {"id": "artifact", "operation": "artifact.resolve", "required": true, "when": "textual artifact, JSON, schema or DSL is in scope"},
-    {"id": "observe", "operation": "observation.read", "required": false, "when": "current operational state is needed"},
-    {"id": "research", "operation": "research.plan", "required": true, "when": "knowledge is missing, stale or explicitly needs re-verification"},
-    {"id": "invoke", "operation": "llm.invoke", "required": true},
-    {"id": "validate", "operation": "validation.run", "required": true},
-    {"id": "receipt", "operation": "receipt.write", "required": true}
+    {
+      "id": "discover",
+      "operation": "profile.resolve",
+      "required": true
+    },
+    {
+      "id": "knowledge",
+      "operation": "knowledge.resolve",
+      "required": true
+    },
+    {
+      "id": "artifact",
+      "operation": "artifact.resolve",
+      "required": true,
+      "when": "textual artifact, JSON, schema or DSL is in scope"
+    },
+    {
+      "id": "observe",
+      "operation": "observation.read",
+      "required": false,
+      "when": "current operational state is needed"
+    },
+    {
+      "id": "research",
+      "operation": "research.plan",
+      "required": true,
+      "when": "knowledge is missing, stale or explicitly needs re-verification"
+    },
+    {
+      "id": "invoke",
+      "operation": "llm.invoke",
+      "required": true
+    },
+    {
+      "id": "validate",
+      "operation": "validation.run",
+      "required": true
+    },
+    {
+      "id": "receipt",
+      "operation": "receipt.write",
+      "required": true
+    }
   ],
   "authority": {
     "llm": "advisory",
@@ -61,7 +100,8 @@
     "maxKnowledgeItems": 12,
     "maxContextBytes": 131072,
     "maxObservationSeconds": 60,
-    "maxExternalQueries": 4
+    "maxExternalQueries": 4,
+    "maxInlineEvidenceBytes": 2048
   },
   "receipt": {
     "redacted": true,

@@ -1,0 +1,87 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-007",
+  "summary": "Declare that returned evidence spends the same context budget it explains",
+  "workstream": "integration",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "docs/ARCHITECTURE.md",
+    "models/llm-profile.schema.json",
+    "models/subactor-first.v1.json",
+    "docs/tools/conformance.py",
+    "project/ticket-007/**",
+    "TODO.md",
+    "project/TICKETS.md"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "db40c7427daef76ca2fcef10afbf7ba473e7aa62",
+    "targetBranch": "main",
+    "outcome": "The standard states that prompt text is read twice and that evidence returned to explain a failure spends the same declared context budget, with one machine-readable limit and a conformance check that no longer accepts a profile missing a required key.",
+    "nonGoals": [
+      "No new repository: the problem is an unowned contract, not a location, and every added adoption surface is another pin that drifts.",
+      "No full JSON Schema validation in conformance; CI installs no dependencies, so only presence is enforced.",
+      "No change to maxContextBytes itself."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 9,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Place the rule in the machine-policy layer, which the architecture already says fixes limits. maxInlineEvidenceBytes bounds what a runtime may spell out inline; anything larger travels by reference so nothing is truncated to fit. Conformance gains a dependency-free walk asserting every schema-required key is present, because the hand-written checks left new keys unenforced.",
+      "components": [
+        {
+          "name": "llm-contract",
+          "paths": [
+            "docs/ARCHITECTURE.md",
+            "models/llm-profile.schema.json",
+            "models/subactor-first.v1.json"
+          ]
+        },
+        {
+          "name": "conformance",
+          "paths": [
+            "docs/tools/conformance.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "limits.maxInlineEvidenceBytes is required in a conformant profile.",
+        "Conformance rejects a profile missing any key its schema marks required."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Drop the limit, its schema entry and the required-key walk; the invariants become prose only."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "make check"
+        ],
+        "evidence": "Measured in a Subactor deployment 2026-09-09: two comparable repairs failed in opposite ways within one hour. One carried a bare error code, kept its budget and repeated the identical failure until the retry budget was exhausted; the other carried eight rejected paths, could have acted on them, and never reached a model turn because those references exhausted context selection that would have resolved to zero files. Before this change, deleting a required limit from the profile still passed conformance."
+      }
+    ]
+  }
+}

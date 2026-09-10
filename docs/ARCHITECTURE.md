@@ -45,6 +45,45 @@ a bounded read-only observation. Missing or stale knowledge is sent to
 research after deduplication. Validation runs after model output, and a
 secret-free receipt closes the operation.
 
+## Evidence spends the budget it explains
+
+Prompt text is read twice. The model reads it as an instruction, and the runtime
+reads the same text to decide which knowledge, artifacts and sources to resolve
+into context. `limits.maxContextBytes` bounds the result of the second reading,
+so every concrete reference added for the benefit of the first reading spends
+part of it.
+
+This matters most when a failure is explained back to the model. A diagnostic
+that names the exact paths, artifacts or identifiers involved is the one a model
+can act on — and is also the one that consumes the budget fastest. The two
+readings therefore pull in opposite directions, and a runtime that satisfies
+neither ends up serving a model that either cannot act or is never reached.
+
+Measured in a Subactor deployment on 2026-09-09: two comparable repairs failed
+in opposite ways within the same hour. One carried a bare error code, kept its
+budget and repeated the identical failure until its retry budget was exhausted.
+The other carried the full list of eight rejected paths, could have acted on it,
+and never reached a model turn because those eight references exhausted the
+context selection — which, measured separately, would have resolved to nothing
+at all.
+
+Two rules follow.
+
+`llm-evidence-by-reference`
+: Evidence too large to spend on a prompt is written where the model can read
+  it and named once. A durable reference costs one entry and delivers the whole
+  finding, so nothing is truncated to fit. Scaffolding written for a single turn
+  is removed once that turn ends, because a runtime that measures changed state
+  will otherwise read the explanation as part of the work.
+
+`llm-budget-single-owner`
+: One declared budget governs a request. A component that bounds evidence for
+  readability, a component that assembles the prompt and a component that
+  selects context are all spending `limits.maxContextBytes`, and a limit tuned
+  in one of them without reference to that declaration is not a budget. Where a
+  runtime enforces its own separate ceiling, it states the relationship to the
+  declared one rather than competing with it.
+
 External provenance URLs are evidence, not runtime dependencies. Durable
 assumptions use versioned `knowledge://subactor/.../vN` references; managed
 text uses `artifact://subactor/.../rN` references.

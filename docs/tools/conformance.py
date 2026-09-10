@@ -123,8 +123,35 @@ def check_schema(
     )
 
 
+def check_required_by_schema(
+    document: dict[str, Any], schema: dict[str, Any], errors: list[str], where: str = "profile"
+) -> None:
+    """Assert the document carries every key its own schema marks required.
+
+    The checks below name individual fields by hand, so a key added to the
+    schema stayed unenforced until someone remembered to add a matching check.
+    Removing a required limit from the profile passed conformance unchanged,
+    which is the failure this repository exists to prevent in adopters.
+
+    This is deliberately a subset of JSON Schema: CI installs no dependencies,
+    so types, ranges and formats are still the schema's business elsewhere.
+    Presence is the part that was silently unchecked, and presence is what a
+    hand-written check forgets.
+    """
+    if not isinstance(schema, dict) or not isinstance(document, dict):
+        return
+    for name in schema.get("required", []):
+        require(name in document, f"{where}: missing required '{name}'", errors)
+    for name, child in (schema.get("properties") or {}).items():
+        if name in document:
+            check_required_by_schema(document[name], child, errors, f"{where}.{name}")
+
+
 def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
     profile = load_json(profile_path, errors)
+    check_required_by_schema(
+        profile, load_json(profile_path.parent / "llm-profile.schema.json", errors), errors,
+    )
     require(
         profile.get("$schema") == "./llm-profile.schema.json",
         "profile: schema path mismatch",
