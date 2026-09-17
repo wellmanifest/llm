@@ -2,8 +2,8 @@
 
 - **ID**: ticket-006
 - **Owner**: agent:grok under SESSION_EXECUTION_AUTHORIZATION
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: DONE
 - **Created**: 2026-08-29
 
 ## Goal and scope
