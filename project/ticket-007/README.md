@@ -1,8 +1,8 @@
 # Ticket 007: Declare that returned evidence spends the same context budget it explains
 
 - **ID**: ticket-007
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: DONE
 - **Owner**: founder
 
 ## Goal and scope
