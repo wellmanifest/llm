@@ -20,4 +20,4 @@ gate = "project/governance-check.sh"
 [tool.pytest.ini_options]
 addopts = "-p wellmanifest_governance"
 pythonpath = [".", "docs/tools"]
-testpaths = ["tests"]
+testpaths = ["tests", "docs/tools"]

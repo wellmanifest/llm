@@ -19,6 +19,7 @@ from schema_validators import (  # noqa: E402
     START,
     extract_marked_block,
     extract_marked_span,
+    read_regular_utf8,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,6 +108,8 @@ def _validate_destination(target: Path, destination: Path, label: str) -> None:
 
 
 def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
+    if path.is_symlink() or path.parent.is_symlink():
+        raise ValueError(f"refusing symlink path during atomic write: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, raw_temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temp = Path(raw_temp)
@@ -115,6 +118,8 @@ def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
             handle.write(content)
         if mode is not None:
             os.chmod(temp, mode)
+        if path.is_symlink():
+            raise ValueError(f"refusing symlink target during atomic write: {path}")
         os.replace(temp, path)
     finally:
         if temp.exists():
@@ -130,7 +135,7 @@ def marked_block(text: str) -> str | None:
 
 def build_adapter_plan(target: Path, host: str) -> PlannedWrite:
     source_name, target_name = HOSTS[host]
-    source = (ADAPTER_ROOT / source_name).read_text(encoding="utf-8")
+    source = read_regular_utf8(ADAPTER_ROOT / source_name)
     destination = target / target_name
     _validate_destination(target, destination, host)
     source_block = marked_block(source)
@@ -139,7 +144,7 @@ def build_adapter_plan(target: Path, host: str) -> PlannedWrite:
     marker_span = extract_marked_span(source)
 
     if destination.exists():
-        existing = destination.read_text(encoding="utf-8")
+        existing = read_regular_utf8(destination)
         existing_block = marked_block(existing)
         if existing_block == source_block:
             return PlannedWrite("UNCHANGED", host, destination)
@@ -155,11 +160,11 @@ def build_adapter_plan(target: Path, host: str) -> PlannedWrite:
 
 def build_document_plan(target: Path, name: str, replace: bool) -> PlannedWrite:
     source_path, target_path = DOCUMENTS[name]
-    source = source_path.read_text(encoding="utf-8")
+    source = read_regular_utf8(source_path)
     destination = target / target_path
     _validate_destination(target, destination, name)
     if destination.exists():
-        existing = destination.read_text(encoding="utf-8")
+        existing = read_regular_utf8(destination)
         if existing == source:
             return PlannedWrite("UNCHANGED", name, destination)
         if not replace:
