@@ -21,6 +21,9 @@ from schema_validators import (  # noqa: E402
     START,
     DuplicateKeyError,
     extract_marked_block,
+    has_control_chars,
+    has_lone_surrogate,
+    has_symlink_ancestor,
     is_strict_int,
     load_strict_json,
     read_regular_utf8,
@@ -121,9 +124,7 @@ def marked_block(path: Path, errors: list[str]) -> str:
     return block
 
 
-def assert_closed_object_schemas(
-    schema: Any, label: str, errors: list[str]
-) -> None:
+def assert_closed_object_schemas(schema: Any, label: str, errors: list[str]) -> None:
     """Require every object subschema to declare explicit closed or bounded additionalProperties."""
     stack: list[tuple[Any, str, int]] = [(schema, label, 0)]
     while stack:
@@ -146,9 +147,7 @@ def assert_closed_object_schemas(
                     stack.append((child, f"{where}[{idx}]", depth + 1))
 
 
-def check_schema(
-    path: Path, schema_id: str, document_schema: str, errors: list[str]
-) -> None:
+def check_schema(path: Path, schema_id: str, document_schema: str, errors: list[str]) -> None:
     value = load_json(path, errors)
     require(
         value.get("$schema") == "https://json-schema.org/draft/2020-12/schema",
@@ -309,7 +308,10 @@ def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
             if "when" in step:
                 when = step.get("when")
                 require(
-                    isinstance(when, str) and bool(when.strip()),
+                    isinstance(when, str)
+                    and bool(when.strip())
+                    and not has_lone_surrogate(when)
+                    and not has_control_chars(when, allow_newlines=False),
                     f"profile.workflow[{idx}]: when must be non-empty string",
                     errors,
                 )
@@ -399,28 +401,35 @@ def check_adapters(profile: dict[str, Any], errors: list[str]) -> None:
     )
 
 
+def _resolve_cli_path(raw: Path, errors: list[str]) -> Path | None:
+    if has_symlink_ancestor(raw, include_self=True):
+        errors.append(f"{_rel_label(raw)}: invalid path: refusing symlink path: {raw}")
+        return None
+    return Path(os.path.abspath(raw))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--all", action="store_true", help="check all bundled contracts (default)"
-    )
-    parser.add_argument(
-        "--profile", type=Path, default=MODELS / "subactor-first.v1.json"
-    )
+    parser.add_argument("--all", action="store_true", help="check all bundled contracts (default)")
+    parser.add_argument("--profile", type=Path, default=MODELS / "subactor-first.v1.json")
     parser.add_argument("--request", type=Path, help="validate an llm-request/v1 JSON file")
     parser.add_argument("--response", type=Path, help="validate an llm-response/v1 JSON file")
     args = parser.parse_args(argv)
-    profile_path = Path(os.path.abspath(args.profile))
 
     errors: list[str] = []
     if args.request is not None:
-        doc = load_json(Path(os.path.abspath(args.request)), errors)
-        if not errors:
-            errors.extend(validate_request_document(doc))
+        req_path = _resolve_cli_path(args.request, errors)
+        if req_path is not None:
+            doc = load_json(req_path, errors)
+            if not errors:
+                errors.extend(validate_request_document(doc))
     if args.response is not None:
-        doc = load_json(Path(os.path.abspath(args.response)), errors)
-        if not errors:
-            errors.extend(validate_response_document(doc))
+        resp_path = _resolve_cli_path(args.response, errors)
+        if resp_path is not None:
+            doc = load_json(resp_path, errors)
+            if not errors:
+                errors.extend(validate_response_document(doc))
+    profile_path = Path(os.path.abspath(args.profile))
     if args.all or (args.request is None and args.response is None):
         check_schema(
             MODELS / "llm-profile.schema.json",
@@ -440,8 +449,11 @@ def main(argv: list[str] | None = None) -> int:
             "wellmanifest.llm-response/v1",
             errors,
         )
-        profile = check_profile(profile_path, errors)
-        check_adapters(profile, errors)
+        checked_profile = _resolve_cli_path(args.profile, errors)
+        if checked_profile is not None:
+            profile_path = checked_profile
+            profile = check_profile(profile_path, errors)
+            check_adapters(profile, errors)
 
     if errors:
         for error in errors:

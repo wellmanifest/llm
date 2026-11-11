@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,12 +12,16 @@ _TOOLS_DIR = str(Path(__file__).resolve().parent)
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
+from llm_io import (  # noqa: E402
+    atomic_write,
+    has_symlink_ancestor,
+    read_regular_utf8,
+)
 from schema_validators import (  # noqa: E402
     END,
     START,
     extract_marked_block,
     extract_marked_span,
-    read_regular_utf8,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -82,6 +84,10 @@ class PlannedWrite:
 
 
 def inside_target(target: Path, destination: Path) -> bool:
+    if has_symlink_ancestor(target, include_self=True) or has_symlink_ancestor(
+        destination, include_self=True
+    ):
+        return False
     try:
         rel = destination.relative_to(target)
     except ValueError:
@@ -92,69 +98,19 @@ def inside_target(target: Path, destination: Path) -> bool:
         if current.is_symlink():
             return False
     try:
-        destination.resolve(strict=False).relative_to(target)
+        destination.resolve(strict=False).relative_to(target.resolve(strict=False))
         return True
     except ValueError:
         return False
 
 
 def _validate_destination(target: Path, destination: Path, label: str) -> None:
-    if not inside_target(target, destination):
-        raise ValueError(f"{label}: target escapes repository or traverses symlink")
     if destination.is_symlink():
         raise ValueError(f"{label}: refusing symlink target {destination}")
+    if not inside_target(target, destination):
+        raise ValueError(f"{label}: target escapes repository or traverses symlink")
     if destination.exists() and not destination.is_file():
         raise ValueError(f"{label}: refusing non-regular target {destination}")
-
-
-_OS_ROOT_SYMLINK_ALLOW = {Path("/tmp"), Path("/var"), Path("/etc")}
-
-
-def _has_symlink_ancestor(path: Path) -> bool:
-    if path.is_symlink():
-        return True
-    if not path.is_absolute():
-        cur = Path()
-        for part in path.parts[:-1]:
-            cur = cur / part
-            if cur.is_symlink():
-                return True
-        return False
-    for anc in path.parents:
-        if anc in _OS_ROOT_SYMLINK_ALLOW:
-            continue
-        if anc.is_symlink():
-            return True
-    return False
-
-
-def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
-    if not isinstance(content, str):
-        raise TypeError("atomic_write content must be a string")
-    try:
-        encoded = content.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ValueError("lone UTF-16 surrogate in content is forbidden") from exc
-    if len(encoded) > 4 * 1024 * 1024:
-        raise ValueError("content exceeds maximum size")
-    if _has_symlink_ancestor(path):
-        raise ValueError(f"refusing symlink path during atomic write: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if _has_symlink_ancestor(path):
-        raise ValueError(f"refusing symlink path during atomic write: {path}")
-    fd, raw_temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temp = Path(raw_temp)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            handle.write(content)
-        if mode is not None:
-            os.chmod(temp, mode)
-        if _has_symlink_ancestor(path):
-            raise ValueError(f"refusing symlink target during atomic write: {path}")
-        os.replace(temp, path)
-    finally:
-        if temp.exists():
-            temp.unlink()
 
 
 def marked_block(text: str) -> str | None:
@@ -199,9 +155,7 @@ def build_document_plan(target: Path, name: str, replace: bool) -> PlannedWrite:
         if existing == source:
             return PlannedWrite("UNCHANGED", name, destination)
         if not replace:
-            raise ValueError(
-                f"{name} differs at {destination}; review and pass --replace-profile"
-            )
+            raise ValueError(f"{name} differs at {destination}; review and pass --replace-profile")
         return PlannedWrite("REPLACE", name, destination, source, destination.stat().st_mode)
     return PlannedWrite("CREATE", name, destination, source, None)
 
@@ -224,9 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", required=True, choices=[*HOSTS, "all"])
     parser.add_argument("--target", type=Path, required=True)
-    parser.add_argument(
-        "--apply", action="store_true", help="perform writes; default is dry-run"
-    )
+    parser.add_argument("--apply", action="store_true", help="perform writes; default is dry-run")
     parser.add_argument(
         "--replace-profile",
         action="store_true",
@@ -235,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.replace_profile and not args.apply:
         parser.error("--replace-profile requires --apply")
-    if _has_symlink_ancestor(args.target):
+    if has_symlink_ancestor(args.target, include_self=True):
         print(f"REFUSED target must not traverse a symlink: {args.target}", file=sys.stderr)
         return 1
     target = args.target.resolve()

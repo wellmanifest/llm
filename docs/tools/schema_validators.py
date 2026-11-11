@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
-import json
 import math
-import os
 import re
-import stat
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_TOOLS_DIR = str(Path(__file__).resolve().parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+
+from llm_io import (  # noqa: E402
+    MAX_FILE_BYTES,
+    MAX_INT_DIGITS,
+    MAX_JSON_DEPTH,
+    DuplicateKeyError,
+    has_control_chars,
+    has_lone_surrogate,
+    has_symlink_ancestor,
+    is_finite_int,
+    load_strict_json,
+    loads_strict_json,
+    read_regular_utf8,
+)
+
 START = "<!-- SUBACTOR-FIRST:START wellmanifest/llm v1 -->"
 END = "<!-- SUBACTOR-FIRST:END wellmanifest/llm v1 -->"
-MAX_FILE_BYTES = 4 * 1024 * 1024
-MAX_JSON_DEPTH = 64
 OPERATIONS = [
     "profile.resolve",
     "knowledge.resolve",
@@ -39,134 +53,41 @@ RFC3339_RE = re.compile(
     r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"
 )
+_SUBSEC_TRIM_RE = re.compile(r"\.([0-9]{6})[0-9]+")
 
-
-class DuplicateKeyError(ValueError):
-    """Raised when a JSON object contains duplicate keys."""
-
-
-def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    obj: dict[str, Any] = {}
-    for key, val in pairs:
-        if key in obj:
-            raise DuplicateKeyError(f"duplicate JSON key {key!r}")
-        obj[key] = val
-    return obj
-
-
-def _reject_json_constant(token: str) -> Any:
-    raise ValueError(f"non-finite JSON constant {token!r} is forbidden")
-
-
-def _parse_finite_float(token: str) -> float:
-    parsed = float(token)
-    if not math.isfinite(parsed):
-        raise ValueError(f"non-finite JSON number {token!r} is forbidden")
-    return parsed
-
-
-def _check_utf8_str(value: str) -> None:
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError as exc:
-        raise ValueError("lone UTF-16 surrogate in JSON string is forbidden") from exc
-
-
-def _is_finite_int(value: int) -> bool:
-    try:
-        return math.isfinite(float(value))
-    except OverflowError:
-        return False
-
-
-def _validate_json_tree(root: Any, max_depth: int = MAX_JSON_DEPTH) -> None:
-    stack: list[tuple[Any, int]] = [(root, 0)]
-    while stack:
-        current, depth = stack.pop()
-        if depth > max_depth:
-            raise ValueError(f"JSON nesting depth exceeds maximum ({max_depth})")
-        if isinstance(current, dict):
-            for key, child in current.items():
-                if not isinstance(key, str):
-                    raise ValueError("JSON object keys must be strings")
-                _check_utf8_str(key)
-                stack.append((child, depth + 1))
-        elif isinstance(current, list):
-            for child in current:
-                stack.append((child, depth + 1))
-        elif isinstance(current, str):
-            _check_utf8_str(current)
-        elif type(current) is int:
-            if not _is_finite_int(current):
-                raise ValueError("JSON integer magnitude exceeds finite range")
-        elif isinstance(current, float) and not math.isfinite(current):
-            raise ValueError("non-finite float value is forbidden")
-
-
-def read_regular_utf8(path: Path, max_bytes: int = MAX_FILE_BYTES) -> str:
-    if type(max_bytes) is not int or max_bytes < 1:
-        raise ValueError("max_bytes must be a positive integer")
-    if not path.is_absolute():
-        cur = Path()
-        for part in path.parts[:-1]:
-            cur = cur / part
-            if cur.is_symlink():
-                raise OSError(f"refusing symlink ancestor: {cur}")
-    else:
-        for anc in path.parents:
-            if len(anc.parts) <= 2:
-                break
-            if anc.is_symlink():
-                raise OSError(f"refusing symlink ancestor: {anc}")
-    lst = os.lstat(path)
-    if stat.S_ISLNK(lst.st_mode):
-        raise OSError(f"refusing symlink file: {path}")
-    if not stat.S_ISREG(lst.st_mode):
-        raise OSError(f"refusing non-regular file: {path}")
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    fd = os.open(path, flags)
-    try:
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode):
-            raise OSError(f"refusing non-regular file: {path}")
-        if (lst.st_dev, lst.st_ino) != (st.st_dev, st.st_ino):
-            raise OSError(f"file identity changed during open: {path}")
-        if st.st_size > max_bytes:
-            raise ValueError(f"file exceeds {max_bytes} bytes: {path}")
-        chunks = bytearray()
-        while True:
-            chunk = os.read(fd, min(65536, max_bytes + 1 - len(chunks)))
-            if not chunk:
-                break
-            chunks.extend(chunk)
-            if len(chunks) > max_bytes:
-                raise ValueError(f"file exceeds {max_bytes} bytes: {path}")
-    finally:
-        os.close(fd)
-    return bytes(chunks).decode("utf-8")
-
-
-def loads_strict_json(raw: str) -> Any:
-    if not isinstance(raw, str):
-        raise TypeError("JSON payload must be a string")
-    _check_utf8_str(raw)
-    if len(raw.encode("utf-8")) > MAX_FILE_BYTES:
-        raise ValueError(f"JSON payload exceeds {MAX_FILE_BYTES} bytes")
-    try:
-        parsed = json.loads(
-            raw,
-            object_pairs_hook=_reject_duplicate_keys,
-            parse_constant=_reject_json_constant,
-            parse_float=_parse_finite_float,
-        )
-    except RecursionError as exc:
-        raise ValueError("JSON nesting depth exceeds maximum") from exc
-    _validate_json_tree(parsed)
-    return parsed
-
-
-def load_strict_json(path: Path) -> Any:
-    return loads_strict_json(read_regular_utf8(path))
+__all__ = [
+    "CONTEXT_REF_RE",
+    "DuplicateKeyError",
+    "END",
+    "GRANT_REF_RE",
+    "KNOWLEDGE_REF_RE",
+    "MAX_FILE_BYTES",
+    "MAX_INT_DIGITS",
+    "MAX_JSON_DEPTH",
+    "OPERATIONS",
+    "REQUEST_ID_RE",
+    "RESULT_REF_RE",
+    "RFC3339_RE",
+    "SHA256_RE",
+    "START",
+    "extract_marked_block",
+    "extract_marked_span",
+    "has_control_chars",
+    "has_lone_surrogate",
+    "has_symlink_ancestor",
+    "is_finite_int",
+    "is_strict_int",
+    "is_valid_context_ref",
+    "is_valid_grant_ref",
+    "is_valid_knowledge_ref",
+    "is_valid_result_ref",
+    "load_strict_json",
+    "loads_strict_json",
+    "parse_rfc3339",
+    "read_regular_utf8",
+    "validate_request_document",
+    "validate_response_document",
+]
 
 
 def is_strict_int(value: Any) -> bool:
@@ -175,8 +96,7 @@ def is_strict_int(value: Any) -> bool:
 
 def _has_safe_uri_segments(uri: str) -> bool:
     if any(
-        ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() or ch in {"\\", "?", "#"}
-        for ch in uri
+        ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() or ch in {"\\", "?", "#"} for ch in uri
     ):
         return False
     _, sep, remainder = uri.partition("://")
@@ -225,8 +145,9 @@ def is_valid_knowledge_ref(value: Any) -> bool:
 def parse_rfc3339(value: Any) -> datetime | None:
     if not isinstance(value, str) or RFC3339_RE.fullmatch(value) is None:
         return None
+    normalized = _SUBSEC_TRIM_RE.sub(r".\1", value).replace("Z", "+00:00")
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         return None
     return parsed if parsed.tzinfo is not None else None
@@ -273,16 +194,13 @@ def _closed_dict(
     return value
 
 
-def _has_lone_surrogate(value: str) -> bool:
-    try:
-        value.encode("utf-8")
-        return False
-    except UnicodeEncodeError:
-        return True
-
-
-def _is_safe_str(value: Any, lo: int, hi: int) -> bool:
-    return isinstance(value, str) and lo <= len(value) <= hi and not _has_lone_surrogate(value)
+def _is_safe_str(value: Any, lo: int, hi: int, *, allow_newlines: bool = False) -> bool:
+    return (
+        isinstance(value, str)
+        and lo <= len(value) <= hi
+        and not has_lone_surrogate(value)
+        and not has_control_chars(value, allow_newlines=allow_newlines)
+    )
 
 
 def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
@@ -297,8 +215,11 @@ def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
                 if not isinstance(key, str):
                     errors.append("request.intent: object keys must be strings")
                     return
-                if _has_lone_surrogate(key):
+                if has_lone_surrogate(key):
                     errors.append("request.intent: lone UTF-16 surrogate in key is forbidden")
+                    return
+                if has_control_chars(key, allow_newlines=False):
+                    errors.append("request.intent: control character in key is forbidden")
                     return
                 stack.append((child, depth + 1))
         elif isinstance(current, list):
@@ -307,11 +228,14 @@ def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
         elif current is None or isinstance(current, bool):
             continue
         elif isinstance(current, str):
-            if _has_lone_surrogate(current):
+            if has_lone_surrogate(current):
                 errors.append("request.intent: lone UTF-16 surrogate in string is forbidden")
                 return
+            if has_control_chars(current, allow_newlines=True):
+                errors.append("request.intent: control character in string is forbidden")
+                return
         elif type(current) is int:
-            if not _is_finite_int(current):
+            if not is_finite_int(current):
                 errors.append("request.intent: integer magnitude exceeds finite range")
                 return
         elif isinstance(current, float):
@@ -403,7 +327,7 @@ def validate_response_document(doc: Any) -> list[str]:
             }:
                 errors.append("response.gap.method: invalid gap method")
             query = gap.get("query")
-            if not _is_safe_str(query, 1, 1000):
+            if not _is_safe_str(query, 1, 1000, allow_newlines=True):
                 errors.append("response.gap.query: must be valid UTF-8 of 1..1000 chars")
             dedup = gap.get("deduplicateAgainst")
             if (
@@ -424,12 +348,12 @@ def validate_response_document(doc: Any) -> list[str]:
             if not is_valid_result_ref(row.get("ref")):
                 errors.append(f"response.results[{idx}].ref: invalid reference URI")
             mt = row.get("mediaType")
-            if not _is_safe_str(mt, 3, 200):
+            if not _is_safe_str(mt, 3, 200, allow_newlines=False):
                 errors.append(f"response.results[{idx}].mediaType: invalid mediaType")
             dg = row.get("digest")
             if not isinstance(dg, str) or SHA256_RE.fullmatch(dg) is None:
                 errors.append(f"response.results[{idx}].digest: invalid sha256 digest")
-            if "summary" in row and not _is_safe_str(row["summary"], 0, 2000):
+            if "summary" in row and not _is_safe_str(row["summary"], 0, 2000, allow_newlines=True):
                 errors.append(f"response.results[{idx}].summary: must be valid UTF-8 <= 2000 chars")
     rcpt_req = {"redacted", "transport", "route", "model", "startedAt", "finishedAt"}
     rcpt = _closed_dict(
@@ -442,10 +366,10 @@ def validate_response_document(doc: Any) -> list[str]:
         if not isinstance(transport, str) or transport not in {"mcp", "https", "cli", "file"}:
             errors.append("response.receipt.transport: invalid transport")
         route = rcpt.get("route")
-        if not _is_safe_str(route, 1, 200):
+        if not _is_safe_str(route, 1, 200, allow_newlines=False):
             errors.append("response.receipt.route: must be valid UTF-8 of 1..200 chars")
         model = rcpt.get("model")
-        if model is not None and not _is_safe_str(model, 0, 200):
+        if model is not None and not _is_safe_str(model, 0, 200, allow_newlines=False):
             errors.append("response.receipt.model: must be null or valid UTF-8 <= 200 chars")
         started = parse_rfc3339(rcpt.get("startedAt"))
         finished = parse_rfc3339(rcpt.get("finishedAt"))
