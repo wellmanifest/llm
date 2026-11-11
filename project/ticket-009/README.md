@@ -1,9 +1,9 @@
 # Ticket 009: Harden LLM conformance validator and transactional installer
 
 - **ID**: ticket-009
-- **Owner**: unresolved:human
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Owner**: tom
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-11-11
 
 ## Goal and scope
