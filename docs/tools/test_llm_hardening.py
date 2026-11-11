@@ -366,6 +366,40 @@ class LlmHardeningTests(unittest.TestCase):
                 install.atomic_write(repo / "symdir" / "nested" / "sub" / "out.md", "hi\n")
             self.assertFalse((outside / "nested").exists())
 
+    def test_deep_abs_symlink_ancestors_response_surrogates_and_install_target(self) -> None:
+        with self.assertRaises(ValueError):
+            schema_validators.loads_strict_json('{"n": ' + ("9" * 5000) + "}")
+
+        resp = _base_response()
+        resp["status"] = "gap"
+        resp["gap"] = {
+            "method": "live-observation",
+            "query": "bad-\ud800",
+            "deduplicateAgainst": [],
+        }
+        resp["results"][0]["mediaType"] = "text/\ud800"
+        resp["results"][0]["summary"] = "sum-\udfff"
+        resp["receipt"]["route"] = "mcp-\ud800"
+        resp["receipt"]["model"] = "m-\udfff"
+        errs = schema_validators.validate_response_document(resp)
+        for expected in ("gap.query", "mediaType", "summary", "receipt.route", "receipt.model"):
+            self.assertTrue(any(expected in e for e in errs), (expected, errs))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            real_sub = base / "real_dir" / "nested"
+            real_sub.mkdir(parents=True)
+            doc = real_sub / "req.json"
+            doc.write_text('{"ok": 1}', encoding="utf-8")
+            sym_dir = base / "sym_dir"
+            sym_dir.symlink_to(base / "real_dir")
+            with self.assertRaises(OSError):
+                schema_validators.read_regular_utf8(sym_dir / "nested" / "req.json")
+            with self.assertRaises(ValueError):
+                install.atomic_write(base / "real_dir" / "bad.md", "bad-\ud800\n")
+            rc = install.main(["--host", "codex", "--target", str(sym_dir / "nested")])
+            self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

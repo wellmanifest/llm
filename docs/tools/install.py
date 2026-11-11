@@ -129,6 +129,14 @@ def _has_symlink_ancestor(path: Path) -> bool:
 
 
 def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
+    if not isinstance(content, str):
+        raise TypeError("atomic_write content must be a string")
+    try:
+        encoded = content.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("lone UTF-16 surrogate in content is forbidden") from exc
+    if len(encoded) > 4 * 1024 * 1024:
+        raise ValueError("content exceeds maximum size")
     if _has_symlink_ancestor(path):
         raise ValueError(f"refusing symlink path during atomic write: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -227,8 +235,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.replace_profile and not args.apply:
         parser.error("--replace-profile requires --apply")
-    if args.target.is_symlink():
-        print(f"REFUSED target must not be a symlink: {args.target}", file=sys.stderr)
+    if _has_symlink_ancestor(args.target):
+        print(f"REFUSED target must not traverse a symlink: {args.target}", file=sys.stderr)
         return 1
     target = args.target.resolve()
     if not target.is_dir():

@@ -112,8 +112,12 @@ def read_regular_utf8(path: Path, max_bytes: int = MAX_FILE_BYTES) -> str:
             cur = cur / part
             if cur.is_symlink():
                 raise OSError(f"refusing symlink ancestor: {cur}")
-    elif path.parent.is_symlink():
-        raise OSError(f"refusing symlink ancestor: {path.parent}")
+    else:
+        for anc in path.parents:
+            if len(anc.parts) <= 2:
+                break
+            if anc.is_symlink():
+                raise OSError(f"refusing symlink ancestor: {anc}")
     lst = os.lstat(path)
     if stat.S_ISLNK(lst.st_mode):
         raise OSError(f"refusing symlink file: {path}")
@@ -277,6 +281,10 @@ def _has_lone_surrogate(value: str) -> bool:
         return True
 
 
+def _is_safe_str(value: Any, lo: int, hi: int) -> bool:
+    return isinstance(value, str) and lo <= len(value) <= hi and not _has_lone_surrogate(value)
+
+
 def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
     stack: list[tuple[Any, int]] = [(intent, 1)]
     while stack:
@@ -395,8 +403,8 @@ def validate_response_document(doc: Any) -> list[str]:
             }:
                 errors.append("response.gap.method: invalid gap method")
             query = gap.get("query")
-            if not isinstance(query, str) or not 1 <= len(query) <= 1000:
-                errors.append("response.gap.query: must be 1..1000 chars")
+            if not _is_safe_str(query, 1, 1000):
+                errors.append("response.gap.query: must be valid UTF-8 of 1..1000 chars")
             dedup = gap.get("deduplicateAgainst")
             if (
                 not isinstance(dedup, list)
@@ -416,15 +424,13 @@ def validate_response_document(doc: Any) -> list[str]:
             if not is_valid_result_ref(row.get("ref")):
                 errors.append(f"response.results[{idx}].ref: invalid reference URI")
             mt = row.get("mediaType")
-            if not isinstance(mt, str) or len(mt) < 3:
+            if not _is_safe_str(mt, 3, 200):
                 errors.append(f"response.results[{idx}].mediaType: invalid mediaType")
             dg = row.get("digest")
             if not isinstance(dg, str) or SHA256_RE.fullmatch(dg) is None:
                 errors.append(f"response.results[{idx}].digest: invalid sha256 digest")
-            if "summary" in row and (
-                not isinstance(row["summary"], str) or len(row["summary"]) > 2000
-            ):
-                errors.append(f"response.results[{idx}].summary: must be string <= 2000 chars")
+            if "summary" in row and not _is_safe_str(row["summary"], 0, 2000):
+                errors.append(f"response.results[{idx}].summary: must be valid UTF-8 <= 2000 chars")
     rcpt_req = {"redacted", "transport", "route", "model", "startedAt", "finishedAt"}
     rcpt = _closed_dict(
         resp.get("receipt"), "response.receipt", rcpt_req, rcpt_req | {"grantRef"}, errors
@@ -436,11 +442,11 @@ def validate_response_document(doc: Any) -> list[str]:
         if not isinstance(transport, str) or transport not in {"mcp", "https", "cli", "file"}:
             errors.append("response.receipt.transport: invalid transport")
         route = rcpt.get("route")
-        if not isinstance(route, str) or not 1 <= len(route) <= 200:
-            errors.append("response.receipt.route: must be 1..200 chars")
+        if not _is_safe_str(route, 1, 200):
+            errors.append("response.receipt.route: must be valid UTF-8 of 1..200 chars")
         model = rcpt.get("model")
-        if model is not None and (not isinstance(model, str) or len(model) > 200):
-            errors.append("response.receipt.model: must be null or string <= 200 chars")
+        if model is not None and not _is_safe_str(model, 0, 200):
+            errors.append("response.receipt.model: must be null or valid UTF-8 <= 200 chars")
         started = parse_rfc3339(rcpt.get("startedAt"))
         finished = parse_rfc3339(rcpt.get("finishedAt"))
         if started is None or finished is None:

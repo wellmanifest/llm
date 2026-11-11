@@ -1,0 +1,87 @@
+{
+  "allowedPaths": [
+    "project/ticket-012/README.md",
+    "project/ticket-013/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/tools/install.py",
+    "docs/tools/schema_validators.py",
+    "docs/tools/test_llm_hardening.py"
+  ],
+  "classification": {
+    "kind": "BUG",
+    "origin": "health",
+    "priority": "P1"
+  },
+  "conflictsWith": [],
+  "delivery": {
+    "acceptedBaseSha": "d10eb82e849a7caa871509323bf73db6f4ba06e2",
+    "architecture": {
+      "components": [
+        {
+          "name": "llm-conformance-tools",
+          "paths": [
+            "docs/tools/schema_validators.py",
+            "docs/tools/install.py",
+            "docs/tools/test_llm_hardening.py"
+          ]
+        }
+      ],
+      "dataChanges": [],
+      "decision": "Walk all absolute-path parents above OS root depth in schema_validators.read_regular_utf8, reject lone UTF-16 surrogates across validate_response_document string fields and install.atomic_write, check _has_symlink_ancestor on --target before resolve() in install.main, and mark merged ticket-012 DONE.",
+      "interfaceChanges": [],
+      "responsibilityChanges": false,
+      "rollback": "Revert the ticket-013 branch commit via protected PR delivery.",
+      "status": "accepted",
+      "ui": {
+        "evidence": [],
+        "impact": "none",
+        "states": []
+      }
+    },
+    "budgets": {
+      "maxAffectedComponents": 1,
+      "maxImplementationFiles": 4,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "nonGoals": [
+      "No runtime dependency additions",
+      "No normative adapter block modifications"
+    ],
+    "outcome": "Deterministic rejection of deep absolute symlink ancestors in read_regular_utf8 and install --target, lone UTF-16 surrogates in response documents and atomic_write, all modules below 500 lines, and merged ticket-012 closed.",
+    "runtimeDependencies": [],
+    "targetBranch": "main",
+    "validation": [
+      {
+        "commands": [
+          "ruff check --no-cache docs/tools tests",
+          "pytest -q -p no:cacheprovider",
+          "python3 docs/tools/conformance.py --all"
+        ],
+        "criterion": "AC-01",
+        "evidence": "project/ticket-013/README.md"
+      },
+      {
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "criterion": "AC-02",
+        "evidence": "project/ticket-013/README.md"
+      }
+    ]
+  },
+  "dependsOn": [],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "integrationTicket": null,
+  "schema": "new-project.intent/v3",
+  "stacks": [],
+  "summary": "Harden LLM deep absolute symlink ancestors, response UTF-8 surrogates, and install target checks",
+  "ticket": "ticket-013",
+  "workstream": "integration"
+}
