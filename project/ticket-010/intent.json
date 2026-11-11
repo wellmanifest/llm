@@ -1,0 +1,88 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-010",
+  "summary": "Add standalone pytest conformance and installer regression suite",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-009/README.md",
+    "project/ticket-010/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "tests/test_llm_conformance.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "e80a159883adb589e4cb080cdbacc6746e10ac1b",
+    "targetBranch": "main",
+    "outcome": "Deliver standalone unit and adversarial regression coverage in tests/test_llm_conformance.py for conformance.py, schema_validators.py, and transactional install.py.",
+    "nonGoals": [
+      "No runtime dependency additions",
+      "No normative schema or profile modifications"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 25,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Provide a dependency-free unittest/pytest suite under tests/ exercising positive and adversarial cases across conformance, request/response validators, and transactional installation.",
+      "components": [
+        {
+          "name": "llm-regression-tests",
+          "paths": [
+            "tests/test_llm_conformance.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the ticket branch commit or close the pull request before merge."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "pytest -q"
+        ],
+        "evidence": "project/ticket-010/README.md"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python3 -m unittest discover -s tests -v"
+        ],
+        "evidence": "project/ticket-010/README.md"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "evidence": "project/ticket-010/README.md"
+      }
+    ]
+  }
+}
