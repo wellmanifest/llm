@@ -20,6 +20,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 import conformance  # noqa: E402
 import install  # noqa: E402
+import llm_io  # noqa: E402
 import schema_validators  # noqa: E402
 
 
@@ -399,6 +400,91 @@ class LlmHardeningTests(unittest.TestCase):
                 install.atomic_write(base / "real_dir" / "bad.md", "bad-\ud800\n")
             rc = install.main(["--host", "codex", "--target", str(sym_dir / "nested")])
             self.assertEqual(rc, 1)
+
+    def test_cli_dotdot_symlink_traversal_subsecond_rfc3339_control_chars_and_line_budget(
+        self,
+    ) -> None:
+        for bad_int in ('{"n": ' + ("9" * 310) + "}", '{"n": -' + ("1" + "0" * 309) + "}"):
+            with self.assertRaises(ValueError):
+                llm_io.loads_strict_json(bad_int)
+
+        for valid_ts in (
+            "2026-11-11T01:00:00.1234567Z",
+            "2026-11-11T01:00:00.12345678+02:00",
+            "2026-11-11T01:00:00.123456789Z",
+        ):
+            self.assertIsNotNone(schema_validators.parse_rfc3339(valid_ts), valid_ts)
+
+        req_ctrl = _base_request()
+        req_ctrl["intent"] = {"ok": "bad\x00val"}
+        self.assertTrue(
+            any(
+                "control character" in e
+                for e in schema_validators.validate_request_document(req_ctrl)
+            )
+        )
+        req_key_ctrl = _base_request()
+        req_key_ctrl["intent"] = {"bad\nkey": "ok"}
+        self.assertTrue(
+            any(
+                "control character" in e
+                for e in schema_validators.validate_request_document(req_key_ctrl)
+            )
+        )
+
+        resp_ctrl = _base_response()
+        resp_ctrl["status"] = "gap"
+        resp_ctrl["gap"] = {
+            "method": "live-observation",
+            "query": "bad\x00query",
+            "deduplicateAgainst": [],
+        }
+        resp_ctrl["results"][0]["mediaType"] = "application/json\n"
+        resp_ctrl["results"][0]["summary"] = "bad\x7fsum"
+        resp_ctrl["receipt"]["route"] = "mcp\nroute"
+        resp_ctrl["receipt"]["model"] = "gpt\x1b"
+        resp_errs = schema_validators.validate_response_document(resp_ctrl)
+        for field_name in ("gap.query", "mediaType", "summary", "receipt.route", "receipt.model"):
+            self.assertTrue(any(field_name in e for e in resp_errs), (field_name, resp_errs))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            real_dir = base / "real" / "nested"
+            real_dir.mkdir(parents=True)
+            sibling = base / "sibling"
+            sibling.mkdir()
+            req_file = real_dir / "req.json"
+            req_file.write_text(json.dumps(_base_request()), encoding="utf-8")
+            (base / "sym_dir").symlink_to(base / "real")
+
+            unnorm_abs = Path(f"{base}/sym_dir/../real/nested/req.json")
+            with self.assertRaises(OSError):
+                llm_io.read_regular_utf8(unnorm_abs)
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(conformance.main(["--request", str(unnorm_abs)]), 1)
+                self.assertEqual(
+                    install.main(["--host", "codex", "--target", f"{base}/sym_dir/../real/nested"]),
+                    1,
+                )
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(base)
+                with self.assertRaises(OSError):
+                    llm_io.read_regular_utf8(Path("sym_dir/../real/nested/req.json"))
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                    self.assertEqual(
+                        conformance.main(["--request", "sym_dir/../real/nested/req.json"]), 1
+                    )
+                os.chdir(sibling)
+                with self.assertRaises(OSError):
+                    llm_io.read_regular_utf8(Path("../sym_dir/nested/req.json"))
+            finally:
+                os.chdir(old_cwd)
+
+        for py_file in sorted([*TOOLS_DIR.glob("*.py"), *(ROOT / "tests").glob("*.py")]):
+            lines = len(py_file.read_text(encoding="utf-8").splitlines())
+            self.assertLess(lines, 500, f"{py_file} has {lines} lines")
 
 
 if __name__ == "__main__":

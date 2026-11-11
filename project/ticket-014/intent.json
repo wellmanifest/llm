@@ -1,0 +1,91 @@
+{
+  "allowedPaths": [
+    "project/ticket-013/README.md",
+    "project/ticket-014/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/tools/conformance.py",
+    "docs/tools/install.py",
+    "docs/tools/llm_io.py",
+    "docs/tools/schema_validators.py",
+    "docs/tools/test_llm_hardening.py"
+  ],
+  "classification": {
+    "kind": "BUG",
+    "origin": "health",
+    "priority": "P1"
+  },
+  "conflictsWith": [],
+  "delivery": {
+    "acceptedBaseSha": "b0539701416f487f0e25ebf6e55ac258513559ba",
+    "architecture": {
+      "components": [
+        {
+          "name": "llm-conformance-tools",
+          "paths": [
+            "docs/tools/llm_io.py",
+            "docs/tools/schema_validators.py",
+            "docs/tools/install.py",
+            "docs/tools/conformance.py",
+            "docs/tools/test_llm_hardening.py"
+          ]
+        }
+      ],
+      "dataChanges": [],
+      "decision": "Extract shared regular-file I/O, symlink-ancestor detection, bounded strict JSON parsing, and atomic_write into docs/tools/llm_io.py; validate CLI paths before os.path.abspath normalization in conformance.main; normalize >6 fractional RFC3339 digits in parse_rfc3339; reject C0/DEL control characters across request, response, and workflow string fields; and mark merged ticket-013 DONE.",
+      "interfaceChanges": [],
+      "responsibilityChanges": false,
+      "rollback": "Revert the ticket-014 branch commit via protected PR delivery.",
+      "status": "accepted",
+      "ui": {
+        "evidence": [],
+        "impact": "none",
+        "states": []
+      }
+    },
+    "budgets": {
+      "maxAffectedComponents": 1,
+      "maxImplementationFiles": 5,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "nonGoals": [
+      "No runtime dependency additions",
+      "No normative adapter block modifications"
+    ],
+    "outcome": "Deterministic rejection of CLI and relative symlink-traversal paths, bounded JSON integer digit parsing, 1..9 digit RFC3339 subsecond support, C0/DEL control-character rejection, shared llm_io SSOT module with all Python files < 500 lines, and merged ticket-013 closed.",
+    "runtimeDependencies": [],
+    "targetBranch": "main",
+    "validation": [
+      {
+        "commands": [
+          "ruff check --no-cache docs/tools tests",
+          "pytest -q -p no:cacheprovider",
+          "python3 docs/tools/conformance.py --all"
+        ],
+        "criterion": "AC-01",
+        "evidence": "project/ticket-014/README.md"
+      },
+      {
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "criterion": "AC-02",
+        "evidence": "project/ticket-014/README.md"
+      }
+    ]
+  },
+  "dependsOn": [],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "integrationTicket": null,
+  "schema": "new-project.intent/v3",
+  "stacks": [],
+  "summary": "Modularize llm_io and harden CLI symlink traversal, JSON int bounds, RFC3339 subseconds, and control chars",
+  "ticket": "ticket-014",
+  "workstream": "integration"
+}
