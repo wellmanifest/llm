@@ -1,15 +1,20 @@
-"""Strict JSON, marker-pair, and request/response validators for wellmanifest/llm v1."""
+"""Strict JSON, regular-file IO, marker, and request/response validators for wellmanifest/llm."""
 
 from __future__ import annotations
 
 import json
+import math
+import os
 import re
+import stat
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 START = "<!-- SUBACTOR-FIRST:START wellmanifest/llm v1 -->"
 END = "<!-- SUBACTOR-FIRST:END wellmanifest/llm v1 -->"
+MAX_FILE_BYTES = 4 * 1024 * 1024
+MAX_JSON_DEPTH = 64
 OPERATIONS = [
     "profile.resolve",
     "knowledge.resolve",
@@ -49,16 +54,125 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return obj
 
 
+def _reject_json_constant(token: str) -> Any:
+    raise ValueError(f"non-finite JSON constant {token!r} is forbidden")
+
+
+def _parse_finite_float(token: str) -> float:
+    parsed = float(token)
+    if not math.isfinite(parsed):
+        raise ValueError(f"non-finite JSON number {token!r} is forbidden")
+    return parsed
+
+
+def _validate_json_tree(root: Any, max_depth: int = MAX_JSON_DEPTH) -> None:
+    stack: list[tuple[Any, int]] = [(root, 0)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > max_depth:
+            raise ValueError(f"JSON nesting depth exceeds maximum ({max_depth})")
+        if isinstance(current, dict):
+            for key, child in current.items():
+                if not isinstance(key, str):
+                    raise ValueError("JSON object keys must be strings")
+                stack.append((child, depth + 1))
+        elif isinstance(current, list):
+            for child in current:
+                stack.append((child, depth + 1))
+        elif isinstance(current, float) and not math.isfinite(current):
+            raise ValueError("non-finite float value is forbidden")
+
+
+def read_regular_utf8(path: Path, max_bytes: int = MAX_FILE_BYTES) -> str:
+    if path.is_symlink():
+        raise OSError(f"refusing symlink file: {path}")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    fd = os.open(path, flags)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise OSError(f"refusing non-regular file: {path}")
+        if st.st_size > max_bytes:
+            raise ValueError(f"file exceeds {max_bytes} bytes: {path}")
+        chunks = bytearray()
+        while True:
+            chunk = os.read(fd, min(65536, max_bytes + 1 - len(chunks)))
+            if not chunk:
+                break
+            chunks.extend(chunk)
+            if len(chunks) > max_bytes:
+                raise ValueError(f"file exceeds {max_bytes} bytes: {path}")
+    finally:
+        os.close(fd)
+    return bytes(chunks).decode("utf-8")
+
+
 def loads_strict_json(raw: str) -> Any:
-    return json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
+    if not isinstance(raw, str):
+        raise TypeError("JSON payload must be a string")
+    if len(raw.encode("utf-8")) > MAX_FILE_BYTES:
+        raise ValueError(f"JSON payload exceeds {MAX_FILE_BYTES} bytes")
+    try:
+        parsed = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_finite_float,
+        )
+    except RecursionError as exc:
+        raise ValueError("JSON nesting depth exceeds maximum") from exc
+    _validate_json_tree(parsed)
+    return parsed
 
 
 def load_strict_json(path: Path) -> Any:
-    return loads_strict_json(path.read_text(encoding="utf-8"))
+    return loads_strict_json(read_regular_utf8(path))
 
 
 def is_strict_int(value: Any) -> bool:
     return type(value) is int
+
+
+def _has_safe_uri_segments(uri: str) -> bool:
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() or ch == "\\" for ch in uri):
+        return False
+    _, sep, remainder = uri.partition("://")
+    if not sep or not remainder or remainder.startswith("/") or remainder.endswith("/"):
+        return False
+    segments = remainder.split("/")
+    return all(seg and seg not in {".", ".."} for seg in segments)
+
+
+def is_valid_grant_ref(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and GRANT_REF_RE.fullmatch(value) is not None
+        and _has_safe_uri_segments(value)
+    )
+
+
+def is_valid_context_ref(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and CONTEXT_REF_RE.fullmatch(value) is not None
+        and _has_safe_uri_segments(value)
+    )
+
+
+def is_valid_result_ref(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and RESULT_REF_RE.fullmatch(value) is not None
+        and _has_safe_uri_segments(value)
+    )
+
+
+def is_valid_knowledge_ref(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and KNOWLEDGE_REF_RE.fullmatch(value) is not None
+        and _has_safe_uri_segments(value)
+    )
 
 
 def parse_rfc3339(value: Any) -> datetime | None:
@@ -102,11 +216,41 @@ def _closed_dict(
     if not isinstance(value, dict):
         errors.append(f"{label}: must be an object")
         return None
-    for missing in sorted(required - set(value)):
+    if any(not isinstance(key, str) for key in value):
+        errors.append(f"{label}: object keys must be strings")
+    str_keys = {key for key in value if isinstance(key, str)}
+    for missing in sorted(required - str_keys):
         errors.append(f"{label}: missing required '{missing}'")
-    for extra in sorted(set(value) - allowed):
+    for extra in sorted(str_keys - allowed):
         errors.append(f"{label}: unknown field '{extra}'")
     return value
+
+
+def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
+    stack: list[tuple[Any, int]] = [(intent, 1)]
+    while stack:
+        current, depth = stack.pop()
+        if depth > MAX_JSON_DEPTH:
+            errors.append("request.intent: nesting depth exceeds maximum")
+            return
+        if isinstance(current, dict):
+            for key, child in current.items():
+                if not isinstance(key, str):
+                    errors.append("request.intent: object keys must be strings")
+                    return
+                stack.append((child, depth + 1))
+        elif isinstance(current, list):
+            for child in current:
+                stack.append((child, depth + 1))
+        elif current is None or isinstance(current, (str, bool, int)):
+            continue
+        elif isinstance(current, float):
+            if not math.isfinite(current):
+                errors.append("request.intent: non-finite number is forbidden")
+                return
+        else:
+            errors.append("request.intent: unsupported value type")
+            return
 
 
 def validate_request_document(doc: Any) -> list[str]:
@@ -121,11 +265,14 @@ def validate_request_document(doc: Any) -> list[str]:
     req_id = req.get("requestId")
     if not isinstance(req_id, str) or REQUEST_ID_RE.fullmatch(req_id) is None:
         errors.append("request.requestId: invalid identifier")
-    if req.get("operation") not in OPERATIONS:
+    op = req.get("operation")
+    if not isinstance(op, str) or op not in OPERATIONS:
         errors.append("request.operation: unknown operation")
     intent = req.get("intent")
     if not isinstance(intent, dict) or not 1 <= len(intent) <= 16:
         errors.append("request.intent: must be an object with 1..16 properties")
+    else:
+        _validate_intent_subtree(intent, errors)
     lim_fields = {"maxItems", "maxBytes", "timeoutSeconds"}
     limits = _closed_dict(req.get("limits"), "request.limits", lim_fields, lim_fields, errors)
     if limits is not None:
@@ -135,12 +282,11 @@ def validate_request_document(doc: Any) -> list[str]:
             if not is_strict_int(val) or not lo <= val <= hi:
                 errors.append(f"request.limits.{key}: must be integer in {lo}..{hi}")
     auth = req.get("authority")
-    if auth not in {"read-only", "advisory", "mutation-with-grant"}:
+    if not isinstance(auth, str) or auth not in {"read-only", "advisory", "mutation-with-grant"}:
         errors.append("request.authority: invalid authority mode")
     has_grant = "grantRef" in req
     if auth == "mutation-with-grant":
-        grant_ref = req.get("grantRef")
-        if not isinstance(grant_ref, str) or GRANT_REF_RE.fullmatch(grant_ref) is None:
+        if not is_valid_grant_ref(req.get("grantRef")):
             errors.append("request.grantRef: mutation-with-grant requires valid grant:// URI")
     elif has_grant:
         errors.append("request.grantRef: forbidden unless authority is mutation-with-grant")
@@ -148,7 +294,7 @@ def validate_request_document(doc: Any) -> list[str]:
         ctx = req.get("contextRefs")
         if (
             not isinstance(ctx, list)
-            or not all(isinstance(x, str) and CONTEXT_REF_RE.fullmatch(x) for x in ctx)
+            or not all(is_valid_context_ref(x) for x in ctx)
             or len(ctx) != len(set(ctx))
         ):
             errors.append("request.contextRefs: must be unique valid context URIs")
@@ -166,10 +312,11 @@ def validate_response_document(doc: Any) -> list[str]:
     req_id = resp.get("requestId")
     if not isinstance(req_id, str) or REQUEST_ID_RE.fullmatch(req_id) is None:
         errors.append("response.requestId: invalid identifier")
-    if resp.get("operation") not in OPERATIONS:
+    op = resp.get("operation")
+    if not isinstance(op, str) or op not in OPERATIONS:
         errors.append("response.operation: unknown operation")
     status = resp.get("status")
-    if status not in {"ok", "gap", "denied", "error"}:
+    if not isinstance(status, str) or status not in {"ok", "gap", "denied", "error"}:
         errors.append("response.status: invalid status")
     if status == "gap" and "gap" not in resp:
         errors.append("response.gap: required when status is 'gap'")
@@ -179,7 +326,11 @@ def validate_response_document(doc: Any) -> list[str]:
         gap_req = {"method", "query", "deduplicateAgainst"}
         gap = _closed_dict(resp.get("gap"), "response.gap", gap_req, gap_req, errors)
         if gap is not None:
-            if gap.get("method") not in {"live-observation", "internet-research"}:
+            method = gap.get("method")
+            if not isinstance(method, str) or method not in {
+                "live-observation",
+                "internet-research",
+            }:
                 errors.append("response.gap.method: invalid gap method")
             query = gap.get("query")
             if not isinstance(query, str) or not 1 <= len(query) <= 1000:
@@ -187,7 +338,7 @@ def validate_response_document(doc: Any) -> list[str]:
             dedup = gap.get("deduplicateAgainst")
             if (
                 not isinstance(dedup, list)
-                or not all(isinstance(x, str) and KNOWLEDGE_REF_RE.fullmatch(x) for x in dedup)
+                or not all(is_valid_knowledge_ref(x) for x in dedup)
                 or len(dedup) != len(set(dedup))
             ):
                 errors.append("response.gap.deduplicateAgainst: invalid knowledge refs")
@@ -200,7 +351,7 @@ def validate_response_document(doc: Any) -> list[str]:
             row = _closed_dict(item, f"response.results[{idx}]", r_req, r_req | {"summary"}, errors)
             if row is None:
                 continue
-            if not isinstance(row.get("ref"), str) or RESULT_REF_RE.fullmatch(row["ref"]) is None:
+            if not is_valid_result_ref(row.get("ref")):
                 errors.append(f"response.results[{idx}].ref: invalid reference URI")
             mt = row.get("mediaType")
             if not isinstance(mt, str) or len(mt) < 3:
@@ -219,7 +370,8 @@ def validate_response_document(doc: Any) -> list[str]:
     if rcpt is not None:
         if rcpt.get("redacted") is not True:
             errors.append("response.receipt.redacted: must be true")
-        if rcpt.get("transport") not in {"mcp", "https", "cli", "file"}:
+        transport = rcpt.get("transport")
+        if not isinstance(transport, str) or transport not in {"mcp", "https", "cli", "file"}:
             errors.append("response.receipt.transport: invalid transport")
         route = rcpt.get("route")
         if not isinstance(route, str) or not 1 <= len(route) <= 200:
@@ -233,9 +385,6 @@ def validate_response_document(doc: Any) -> list[str]:
             errors.append("response.receipt: startedAt and finishedAt must be RFC3339")
         elif finished < started:
             errors.append("response.receipt: finishedAt precedes startedAt")
-        if "grantRef" in rcpt and (
-            not isinstance(rcpt["grantRef"], str)
-            or GRANT_REF_RE.fullmatch(rcpt["grantRef"]) is None
-        ):
+        if "grantRef" in rcpt and not is_valid_grant_ref(rcpt["grantRef"]):
             errors.append("response.receipt.grantRef: invalid grant:// URI")
     return errors

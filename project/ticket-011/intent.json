@@ -1,0 +1,96 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-011",
+  "summary": "Harden LLM strict JSON, regular-file IO, URI traversal, and unhashable guards",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-010/README.md",
+    "project/ticket-011/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/tools/conformance.py",
+    "docs/tools/install.py",
+    "docs/tools/schema_validators.py",
+    "docs/tools/test_llm_hardening.py",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "4bc8a1380a5ceea14e26ac6dc353c7d85f14bed9",
+    "targetBranch": "main",
+    "outcome": "Enforce O_NOFOLLOW|O_NONBLOCK 4 MiB regular-file reads across schema_validators, conformance, and install, reject NaN/Infinity/1e999/deep JSON nesting, block URI path traversal segments, guard unhashable enums and non-string dict keys, and mark merged ticket-010 DONE.",
+    "nonGoals": [
+      "No runtime dependency additions",
+      "No normative adapter block modifications"
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 35,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Centralize bounded regular-file UTF-8 reads, finite/bounded JSON parsing, and URI segment safety in docs/tools/schema_validators.py and consume them across conformance.py and install.py.",
+      "components": [
+        {
+          "name": "llm-conformance-tools",
+          "paths": [
+            "docs/tools/schema_validators.py",
+            "docs/tools/conformance.py",
+            "docs/tools/install.py",
+            "docs/tools/test_llm_hardening.py"
+          ]
+        },
+        {
+          "name": "python-project-config",
+          "paths": [
+            "pyproject.toml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the ticket-011 branch commit or close the pull request before merge."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "ruff check docs/tools tests",
+          "pytest -q",
+          "make check"
+        ],
+        "evidence": "project/ticket-011/README.md"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "evidence": "project/ticket-011/README.md"
+      }
+    ]
+  }
+}

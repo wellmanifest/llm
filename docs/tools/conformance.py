@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from schema_validators import (  # noqa: E402
     extract_marked_block,
     is_strict_int,
     load_strict_json,
+    read_regular_utf8,
     validate_request_document,
     validate_response_document,
 )
@@ -78,7 +80,7 @@ def load_json(path: Path, errors: list[str]) -> dict[str, Any]:
     label = _rel_label(path)
     try:
         value = load_strict_json(path)
-    except (OSError, UnicodeError, DuplicateKeyError, ValueError) as exc:
+    except (OSError, UnicodeError, DuplicateKeyError, ValueError, TypeError) as exc:
         errors.append(f"{label}: invalid JSON: {exc}")
         return {}
     if not isinstance(value, dict):
@@ -95,8 +97,8 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 def marked_block(path: Path, errors: list[str]) -> str:
     label = _rel_label(path)
     try:
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
+        text = read_regular_utf8(path)
+    except (OSError, UnicodeError, ValueError) as exc:
         errors.append(f"{label}: unreadable: {exc}")
         return ""
     require(text.count(START) == 1, f"{label}: start marker count must be one", errors)
@@ -150,14 +152,17 @@ def check_required_by_schema(
         return
     if not isinstance(document, dict):
         return
+    if any(not isinstance(key, str) for key in document):
+        errors.append(f"{where}: object keys must be strings")
+    str_keys = {key for key in document if isinstance(key, str)}
     for name in schema.get("required", []):
-        require(name in document, f"{where}: missing required '{name}'", errors)
+        require(name in str_keys, f"{where}: missing required '{name}'", errors)
     props = schema.get("properties")
     if schema.get("additionalProperties") is False and isinstance(props, dict):
-        for extra in sorted(set(document) - set(props)):
+        for extra in sorted(str_keys - set(props)):
             errors.append(f"{where}: unknown property '{extra}'")
     for name, child in (props or {}).items():
-        if name in document:
+        if name in str_keys:
             check_required_by_schema(document[name], child, errors, f"{where}.{name}")
 
 
@@ -247,7 +252,10 @@ def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
             if not isinstance(step, dict):
                 errors.append(f"profile.workflow[{idx}]: step must be an object")
                 continue
-            extra = set(step) - {"id", "operation", "required", "when"}
+            if any(not isinstance(key, str) for key in step):
+                errors.append(f"profile.workflow[{idx}]: step keys must be strings")
+            str_keys = {key for key in step if isinstance(key, str)}
+            extra = str_keys - {"id", "operation", "required", "when"}
             require(
                 not extra,
                 f"profile.workflow[{idx}]: unknown step fields {sorted(extra)}",
@@ -367,15 +375,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--request", type=Path, help="validate an llm-request/v1 JSON file")
     parser.add_argument("--response", type=Path, help="validate an llm-response/v1 JSON file")
     args = parser.parse_args(argv)
-    profile_path = args.profile.resolve()
+    profile_path = Path(os.path.abspath(args.profile))
 
     errors: list[str] = []
     if args.request is not None:
-        doc = load_json(args.request.resolve(), errors)
+        doc = load_json(Path(os.path.abspath(args.request)), errors)
         if not errors:
             errors.extend(validate_request_document(doc))
     if args.response is not None:
-        doc = load_json(args.response.resolve(), errors)
+        doc = load_json(Path(os.path.abspath(args.response)), errors)
         if not errors:
             errors.extend(validate_response_document(doc))
     if args.all or (args.request is None and args.response is None):
