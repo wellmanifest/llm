@@ -25,19 +25,19 @@ OPERATIONS = [
     "validation.run",
     "receipt.write",
 ]
-REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
-GRANT_REF_RE = re.compile(r"^grant://[A-Za-z0-9._/-]+$")
-CONTEXT_REF_RE = re.compile(r"^(?:knowledge|artifact|observation)://[^\s?#]+$")
+REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
+GRANT_REF_RE = re.compile(r"\Agrant://[A-Za-z0-9._/-]+\Z")
+CONTEXT_REF_RE = re.compile(r"\A(?:knowledge|artifact|observation)://[^\s?#]+\Z")
 RESULT_REF_RE = re.compile(
-    r"^(?:knowledge://subactor/[^\s?#]+/v[0-9]+|"
+    r"\A(?:knowledge://subactor/[^\s?#]+/v[0-9]+|"
     r"artifact://subactor/[^\s?#]+/r[0-9]+|"
-    r"observation://[^\s?#]+)$"
+    r"observation://[^\s?#]+)\Z"
 )
-KNOWLEDGE_REF_RE = re.compile(r"^knowledge://subactor/[^\s?#]+/v[0-9]+$")
-SHA256_RE = re.compile(r"^sha256:[a-f0-9]{64}$")
+KNOWLEDGE_REF_RE = re.compile(r"\Aknowledge://subactor/[^\s?#]+/v[0-9]+\Z")
+SHA256_RE = re.compile(r"\Asha256:[a-f0-9]{64}\Z")
 RFC3339_RE = re.compile(
-    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-    r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+    r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,9})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"
 )
 
 
@@ -65,6 +65,20 @@ def _parse_finite_float(token: str) -> float:
     return parsed
 
 
+def _check_utf8_str(value: str) -> None:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("lone UTF-16 surrogate in JSON string is forbidden") from exc
+
+
+def _is_finite_int(value: int) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except OverflowError:
+        return False
+
+
 def _validate_json_tree(root: Any, max_depth: int = MAX_JSON_DEPTH) -> None:
     stack: list[tuple[Any, int]] = [(root, 0)]
     while stack:
@@ -75,23 +89,44 @@ def _validate_json_tree(root: Any, max_depth: int = MAX_JSON_DEPTH) -> None:
             for key, child in current.items():
                 if not isinstance(key, str):
                     raise ValueError("JSON object keys must be strings")
+                _check_utf8_str(key)
                 stack.append((child, depth + 1))
         elif isinstance(current, list):
             for child in current:
                 stack.append((child, depth + 1))
+        elif isinstance(current, str):
+            _check_utf8_str(current)
+        elif type(current) is int:
+            if not _is_finite_int(current):
+                raise ValueError("JSON integer magnitude exceeds finite range")
         elif isinstance(current, float) and not math.isfinite(current):
             raise ValueError("non-finite float value is forbidden")
 
 
 def read_regular_utf8(path: Path, max_bytes: int = MAX_FILE_BYTES) -> str:
-    if path.is_symlink():
+    if type(max_bytes) is not int or max_bytes < 1:
+        raise ValueError("max_bytes must be a positive integer")
+    if not path.is_absolute():
+        cur = Path()
+        for part in path.parts[:-1]:
+            cur = cur / part
+            if cur.is_symlink():
+                raise OSError(f"refusing symlink ancestor: {cur}")
+    elif path.parent.is_symlink():
+        raise OSError(f"refusing symlink ancestor: {path.parent}")
+    lst = os.lstat(path)
+    if stat.S_ISLNK(lst.st_mode):
         raise OSError(f"refusing symlink file: {path}")
+    if not stat.S_ISREG(lst.st_mode):
+        raise OSError(f"refusing non-regular file: {path}")
     flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
     fd = os.open(path, flags)
     try:
         st = os.fstat(fd)
         if not stat.S_ISREG(st.st_mode):
             raise OSError(f"refusing non-regular file: {path}")
+        if (lst.st_dev, lst.st_ino) != (st.st_dev, st.st_ino):
+            raise OSError(f"file identity changed during open: {path}")
         if st.st_size > max_bytes:
             raise ValueError(f"file exceeds {max_bytes} bytes: {path}")
         chunks = bytearray()
@@ -110,6 +145,7 @@ def read_regular_utf8(path: Path, max_bytes: int = MAX_FILE_BYTES) -> str:
 def loads_strict_json(raw: str) -> Any:
     if not isinstance(raw, str):
         raise TypeError("JSON payload must be a string")
+    _check_utf8_str(raw)
     if len(raw.encode("utf-8")) > MAX_FILE_BYTES:
         raise ValueError(f"JSON payload exceeds {MAX_FILE_BYTES} bytes")
     try:
@@ -134,13 +170,20 @@ def is_strict_int(value: Any) -> bool:
 
 
 def _has_safe_uri_segments(uri: str) -> bool:
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() or ch == "\\" for ch in uri):
+    if any(
+        ord(ch) < 0x20 or ord(ch) == 0x7F or ch.isspace() or ch in {"\\", "?", "#"}
+        for ch in uri
+    ):
         return False
     _, sep, remainder = uri.partition("://")
     if not sep or not remainder or remainder.startswith("/") or remainder.endswith("/"):
         return False
-    segments = remainder.split("/")
-    return all(seg and seg not in {".", ".."} for seg in segments)
+    for seg in remainder.split("/"):
+        if not seg or seg in {".", ".."}:
+            return False
+        if ":" in seg and any(not sub or sub in {".", ".."} for sub in seg.split(":")):
+            return False
+    return True
 
 
 def is_valid_grant_ref(value: Any) -> bool:
@@ -226,6 +269,14 @@ def _closed_dict(
     return value
 
 
+def _has_lone_surrogate(value: str) -> bool:
+    try:
+        value.encode("utf-8")
+        return False
+    except UnicodeEncodeError:
+        return True
+
+
 def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
     stack: list[tuple[Any, int]] = [(intent, 1)]
     while stack:
@@ -238,12 +289,23 @@ def _validate_intent_subtree(intent: dict[str, Any], errors: list[str]) -> None:
                 if not isinstance(key, str):
                     errors.append("request.intent: object keys must be strings")
                     return
+                if _has_lone_surrogate(key):
+                    errors.append("request.intent: lone UTF-16 surrogate in key is forbidden")
+                    return
                 stack.append((child, depth + 1))
         elif isinstance(current, list):
             for child in current:
                 stack.append((child, depth + 1))
-        elif current is None or isinstance(current, (str, bool, int)):
+        elif current is None or isinstance(current, bool):
             continue
+        elif isinstance(current, str):
+            if _has_lone_surrogate(current):
+                errors.append("request.intent: lone UTF-16 surrogate in string is forbidden")
+                return
+        elif type(current) is int:
+            if not _is_finite_int(current):
+                errors.append("request.intent: integer magnitude exceeds finite range")
+                return
         elif isinstance(current, float):
             if not math.isfinite(current):
                 errors.append("request.intent: non-finite number is forbidden")

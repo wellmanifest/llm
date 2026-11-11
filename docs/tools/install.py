@@ -107,10 +107,33 @@ def _validate_destination(target: Path, destination: Path, label: str) -> None:
         raise ValueError(f"{label}: refusing non-regular target {destination}")
 
 
+_OS_ROOT_SYMLINK_ALLOW = {Path("/tmp"), Path("/var"), Path("/etc")}
+
+
+def _has_symlink_ancestor(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    if not path.is_absolute():
+        cur = Path()
+        for part in path.parts[:-1]:
+            cur = cur / part
+            if cur.is_symlink():
+                return True
+        return False
+    for anc in path.parents:
+        if anc in _OS_ROOT_SYMLINK_ALLOW:
+            continue
+        if anc.is_symlink():
+            return True
+    return False
+
+
 def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
-    if path.is_symlink() or path.parent.is_symlink():
+    if _has_symlink_ancestor(path):
         raise ValueError(f"refusing symlink path during atomic write: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
+    if _has_symlink_ancestor(path):
+        raise ValueError(f"refusing symlink path during atomic write: {path}")
     fd, raw_temp = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temp = Path(raw_temp)
     try:
@@ -118,7 +141,7 @@ def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
             handle.write(content)
         if mode is not None:
             os.chmod(temp, mode)
-        if path.is_symlink():
+        if _has_symlink_ancestor(path):
             raise ValueError(f"refusing symlink target during atomic write: {path}")
         os.replace(temp, path)
     finally:
