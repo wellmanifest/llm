@@ -4,25 +4,42 @@
 from __future__ import annotations
 
 import argparse
-import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
 
+_TOOLS_DIR = str(Path(__file__).resolve().parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+
+from schema_validators import (  # noqa: E402
+    END,
+    OPERATIONS,
+    START,
+    DuplicateKeyError,
+    extract_marked_block,
+    is_strict_int,
+    load_strict_json,
+    validate_request_document,
+    validate_response_document,
+)
+
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
 ADAPTERS = ROOT / "docs" / "adapters"
-START = "<!-- SUBACTOR-FIRST:START wellmanifest/llm v1 -->"
-END = "<!-- SUBACTOR-FIRST:END wellmanifest/llm v1 -->"
-OPERATIONS = [
-    "profile.resolve",
-    "knowledge.resolve",
-    "artifact.resolve",
-    "observation.read",
-    "research.plan",
-    "llm.invoke",
-    "validation.run",
-    "receipt.write",
+PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
+SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+ADOPT_RE = re.compile(r"^wellmanifest/[a-z0-9-]+$")
+STEP_IDS = [
+    "discover",
+    "knowledge",
+    "artifact",
+    "observe",
+    "research",
+    "invoke",
+    "validate",
+    "receipt",
 ]
 ADAPTER_FILES = {
     "codex": "AGENTS.md",
@@ -33,15 +50,35 @@ ADAPTER_FILES = {
     "generic": "SUBACTOR.md",
 }
 
+__all__ = [
+    "ADAPTER_FILES",
+    "END",
+    "OPERATIONS",
+    "START",
+    "check_adapters",
+    "check_profile",
+    "check_required_by_schema",
+    "check_schema",
+    "load_json",
+    "main",
+    "marked_block",
+    "validate_request_document",
+    "validate_response_document",
+]
+
+
+def _rel_label(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
 
 def load_json(path: Path, errors: list[str]) -> dict[str, Any]:
+    label = _rel_label(path)
     try:
-        label = str(path.relative_to(ROOT))
-    except ValueError:
-        label = str(path)
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        value = load_strict_json(path)
+    except (OSError, UnicodeError, DuplicateKeyError, ValueError) as exc:
         errors.append(f"{label}: invalid JSON: {exc}")
         return {}
     if not isinstance(value, dict):
@@ -56,24 +93,19 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 
 
 def marked_block(path: Path, errors: list[str]) -> str:
+    label = _rel_label(path)
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
-        errors.append(f"{path.relative_to(ROOT)}: unreadable: {exc}")
+        errors.append(f"{label}: unreadable: {exc}")
         return ""
-    require(
-        text.count(START) == 1,
-        f"{path.relative_to(ROOT)}: start marker count must be one",
-        errors,
-    )
-    require(
-        text.count(END) == 1,
-        f"{path.relative_to(ROOT)}: end marker count must be one",
-        errors,
-    )
-    if START not in text or END not in text:
+    require(text.count(START) == 1, f"{label}: start marker count must be one", errors)
+    require(text.count(END) == 1, f"{label}: end marker count must be one", errors)
+    block, marker_err = extract_marked_block(text)
+    if marker_err is not None or block is None:
+        if marker_err and "inverted" in marker_err:
+            errors.append(f"{label}: {marker_err}")
         return ""
-    block = text.split(START, 1)[1].split(END, 1)[0].strip()
     for token in (
         "knowledge.resolve",
         "artifact.resolve",
@@ -81,11 +113,7 @@ def marked_block(path: Path, errors: list[str]) -> str:
         "validation.run",
         "receipt.write",
     ):
-        require(
-            token in block,
-            f"{path.relative_to(ROOT)}: marked block misses {token}",
-            errors,
-        )
+        require(token in block, f"{label}: marked block misses {token}", errors)
     return block
 
 
@@ -99,59 +127,51 @@ def check_schema(
         errors,
     )
     require(value.get("$id") == schema_id, f"{path.name}: wrong $id", errors)
+    require(value.get("type") == "object", f"{path.name}: root type must be object", errors)
+    require(value.get("additionalProperties") is False, f"{path.name}: root must be closed", errors)
+    properties = value.get("properties")
+    require(isinstance(properties, dict), f"{path.name}: properties must be an object", errors)
+    schema_property = properties.get("schema", {}) if isinstance(properties, dict) else {}
     require(
-        value.get("type") == "object", f"{path.name}: root type must be object", errors
-    )
-    require(
-        value.get("additionalProperties") is False,
-        f"{path.name}: root must be closed",
-        errors,
-    )
-    properties = value.get("properties", {})
-    require(
-        isinstance(properties, dict),
-        f"{path.name}: properties must be an object",
-        errors,
-    )
-    schema_property = (
-        properties.get("schema", {}) if isinstance(properties, dict) else {}
-    )
-    require(
-        schema_property.get("const") == document_schema,
+        isinstance(schema_property, dict) and schema_property.get("const") == document_schema,
         f"{path.name}: document schema const mismatch",
         errors,
     )
 
 
 def check_required_by_schema(
-    document: dict[str, Any], schema: dict[str, Any], errors: list[str], where: str = "profile"
+    document: Any, schema: Any, errors: list[str], where: str = "profile"
 ) -> None:
-    """Assert the document carries every key its own schema marks required.
-
-    The checks below name individual fields by hand, so a key added to the
-    schema stayed unenforced until someone remembered to add a matching check.
-    Removing a required limit from the profile passed conformance unchanged,
-    which is the failure this repository exists to prevent in adopters.
-
-    This is deliberately a subset of JSON Schema: CI installs no dependencies,
-    so types, ranges and formats are still the schema's business elsewhere.
-    Presence is the part that was silently unchecked, and presence is what a
-    hand-written check forgets.
-    """
-    if not isinstance(schema, dict) or not isinstance(document, dict):
+    """Enforce required and closed object properties declared in schema."""
+    if not isinstance(schema, dict):
+        return
+    if schema.get("type") == "object" and not isinstance(document, dict):
+        errors.append(f"{where}: expected object")
+        return
+    if not isinstance(document, dict):
         return
     for name in schema.get("required", []):
         require(name in document, f"{where}: missing required '{name}'", errors)
-    for name, child in (schema.get("properties") or {}).items():
+    props = schema.get("properties")
+    if schema.get("additionalProperties") is False and isinstance(props, dict):
+        for extra in sorted(set(document) - set(props)):
+            errors.append(f"{where}: unknown property '{extra}'")
+    for name, child in (props or {}).items():
         if name in document:
             check_required_by_schema(document[name], child, errors, f"{where}.{name}")
 
 
+def _as_dict(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    val = parent.get(key)
+    return val if isinstance(val, dict) else {}
+
+
 def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
     profile = load_json(profile_path, errors)
-    check_required_by_schema(
-        profile, load_json(profile_path.parent / "llm-profile.schema.json", errors), errors,
-    )
+    schema_path = MODELS / "llm-profile.schema.json"
+    if (profile_path.parent / "llm-profile.schema.json").is_file():
+        schema_path = profile_path.parent / "llm-profile.schema.json"
+    check_required_by_schema(profile, load_json(schema_path, errors), errors)
     require(
         profile.get("$schema") == "./llm-profile.schema.json",
         "profile: schema path mismatch",
@@ -162,92 +182,157 @@ def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
         "profile: schema identity mismatch",
         errors,
     )
+    profile_id = profile.get("profileId")
     require(
-        profile.get("profileId") == "subactor-first",
+        isinstance(profile_id, str)
+        and PROFILE_ID_RE.fullmatch(profile_id) is not None
+        and profile_id == "subactor-first",
         "profile: profileId mismatch",
         errors,
     )
+    version = profile.get("version")
+    require(
+        isinstance(version, str) and SEMVER_RE.fullmatch(version) is not None,
+        "profile: version must be semantic version X.Y.Z",
+        errors,
+    )
 
-    placement = profile.get("placement", {})
-    require(
-        placement.get("home") == "wellmanifest",
-        "profile: HOME must be wellmanifest",
-        errors,
-    )
-    require(
-        placement.get("shape") == "domain_pack",
-        "profile: SHAPE must be domain_pack",
-        errors,
-    )
+    placement = _as_dict(profile, "placement")
+    require(placement.get("home") == "wellmanifest", "profile: HOME must be wellmanifest", errors)
+    require(placement.get("shape") == "domain_pack", "profile: SHAPE must be domain_pack", errors)
     require(
         placement.get("runtimeOwner") == "subactor",
         "profile: runtimeOwner must be subactor",
         errors,
     )
-
-    transport = profile.get("transport", {})
+    adopt = placement.get("adopt")
     require(
-        transport.get("preferred") == "mcp", "profile: MCP must be preferred", errors
+        isinstance(adopt, list)
+        and all(isinstance(x, str) and ADOPT_RE.fullmatch(x) for x in adopt)
+        and len(adopt) == len(set(adopt)),
+        "profile: placement.adopt must list unique wellmanifest/* standards",
+        errors,
     )
+
+    bootstrap = _as_dict(profile, "bootstrap")
+    require(bootstrap.get("marker") == "SUBACTOR-FIRST", "profile: marker mismatch", errors)
+    require(
+        bootstrap.get("profileTarget") == ".wellmanifest/llm.json",
+        "profile: profileTarget mismatch",
+        errors,
+    )
+
+    transport = _as_dict(profile, "transport")
+    require(transport.get("preferred") == "mcp", "profile: MCP must be preferred", errors)
     require(
         transport.get("fallbacks") == ["https", "cli", "file"],
         "profile: fallback order mismatch",
         errors,
     )
+    require(
+        transport.get("semanticEnvelope") == "application/json",
+        "profile: semanticEnvelope must be application/json",
+        errors,
+    )
 
-    workflow = profile.get("workflow", [])
+    workflow = profile.get("workflow")
     actual = (
         [step.get("operation") for step in workflow if isinstance(step, dict)]
         if isinstance(workflow, list)
         else []
     )
-    require(
-        actual == OPERATIONS, f"profile: operation order mismatch: {actual}", errors
-    )
+    require(actual == OPERATIONS, f"profile: operation order mismatch: {actual}", errors)
     if isinstance(workflow, list) and len(workflow) == len(OPERATIONS):
-        for index in (0, 1, 4, 5, 6, 7):
+        for idx, step in enumerate(workflow):
+            if not isinstance(step, dict):
+                errors.append(f"profile.workflow[{idx}]: step must be an object")
+                continue
+            extra = set(step) - {"id", "operation", "required", "when"}
             require(
-                workflow[index].get("required") is True,
+                not extra,
+                f"profile.workflow[{idx}]: unknown step fields {sorted(extra)}",
+                errors,
+            )
+            require(
+                step.get("id") == STEP_IDS[idx],
+                f"profile.workflow[{idx}]: step id mismatch",
+                errors,
+            )
+            require(
+                isinstance(step.get("required"), bool),
+                f"profile.workflow[{idx}]: required must be boolean",
+                errors,
+            )
+            if "when" in step:
+                when = step.get("when")
+                require(
+                    isinstance(when, str) and bool(when.strip()),
+                    f"profile.workflow[{idx}]: when must be non-empty string",
+                    errors,
+                )
+        for index in (0, 1, 2, 4, 5, 6, 7):
+            step_obj = workflow[index] if isinstance(workflow[index], dict) else {}
+            require(
+                step_obj.get("required") is True,
                 f"profile: {OPERATIONS[index]} must be required",
                 errors,
             )
 
-    authority = profile.get("authority", {})
+    authority = _as_dict(profile, "authority")
     require(
         authority
-        == {
-            "llm": "advisory",
-            "mutation": "external-grant",
-            "merge": "trusted-validator",
-        },
+        == {"llm": "advisory", "mutation": "external-grant", "merge": "trusted-validator"},
         "profile: authority boundary mismatch",
         errors,
     )
-    security = profile.get("security", {})
+    security = _as_dict(profile, "security")
     require(
         security.get("credentials") == "out-of-context",
         "profile: credentials must remain out of context",
         errors,
     )
-    for key in ("secretsInContext", "secretsInUris", "secretsInLogs"):
-        require(security.get(key) is False, f"profile: {key} must be false", errors)
-    receipt = profile.get("receipt", {})
     require(
-        receipt.get("redacted") is True and receipt.get("immutableRefs") is True,
-        "profile: receipts must be redacted and immutable-ref based",
+        security.get("secretReferences") == "opaque",
+        "profile: secretReferences must be opaque",
         errors,
     )
+    for key in ("secretsInContext", "secretsInUris", "secretsInLogs"):
+        require(security.get(key) is False, f"profile: {key} must be false", errors)
+
+    limits = _as_dict(profile, "limits")
+    limit_bounds = (
+        ("maxKnowledgeItems", 1, 50),
+        ("maxContextBytes", 1024, 1048576),
+        ("maxObservationSeconds", 1, 300),
+        ("maxExternalQueries", 0, 20),
+        ("maxInlineEvidenceBytes", 0, 65536),
+    )
+    for key, lo, hi in limit_bounds:
+        val = limits.get(key)
+        require(
+            is_strict_int(val) and lo <= val <= hi,
+            f"profile.limits.{key}: must be integer in {lo}..{hi}",
+            errors,
+        )
+
+    receipt = _as_dict(profile, "receipt")
+    for key in ("redacted", "immutableRefs", "recordRoute", "recordModel"):
+        require(receipt.get(key) is True, f"profile.receipt.{key}: must be true", errors)
     return profile
 
 
 def check_adapters(profile: dict[str, Any], errors: list[str]) -> None:
-    bootstrap = profile.get("bootstrap", {})
-    targets = bootstrap.get("adapterTargets", {})
-    require(
-        set(targets) == set(ADAPTER_FILES),
-        "profile: adapter target set mismatch",
-        errors,
-    )
+    bootstrap = _as_dict(profile, "bootstrap")
+    targets = _as_dict(bootstrap, "adapterTargets")
+    expected_targets = {
+        "codex": "AGENTS.md",
+        "claude": "CLAUDE.md",
+        "gemini": "GEMINI.md",
+        "cursor": ".cursor/rules/subactor-first.mdc",
+        "copilot": ".github/copilot-instructions.md",
+        "generic": "SUBACTOR.md",
+    }
+    require(targets == expected_targets, "profile: adapter target set mismatch", errors)
     require(
         bootstrap.get("schemaTargets")
         == {
@@ -265,7 +350,7 @@ def check_adapters(profile: dict[str, Any], errors: list[str]) -> None:
         require(host in targets, f"profile: missing {host} adapter target", errors)
     nonempty = [block for block in blocks if block]
     require(
-        bool(nonempty) and len(set(nonempty)) == 1,
+        len(nonempty) == len(ADAPTER_FILES) and len(set(nonempty)) == 1,
         "adapters: marked normative blocks must be identical",
         errors,
     )
@@ -279,30 +364,41 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--profile", type=Path, default=MODELS / "subactor-first.v1.json"
     )
+    parser.add_argument("--request", type=Path, help="validate an llm-request/v1 JSON file")
+    parser.add_argument("--response", type=Path, help="validate an llm-response/v1 JSON file")
     args = parser.parse_args(argv)
     profile_path = args.profile.resolve()
 
     errors: list[str] = []
-    check_schema(
-        MODELS / "llm-profile.schema.json",
-        "https://wellmanifest.dev/llm/v1/llm-profile.schema.json",
-        "wellmanifest.llm-profile/v1",
-        errors,
-    )
-    check_schema(
-        MODELS / "request.schema.json",
-        "https://wellmanifest.dev/llm/v1/request.schema.json",
-        "wellmanifest.llm-request/v1",
-        errors,
-    )
-    check_schema(
-        MODELS / "response.schema.json",
-        "https://wellmanifest.dev/llm/v1/response.schema.json",
-        "wellmanifest.llm-response/v1",
-        errors,
-    )
-    profile = check_profile(profile_path, errors)
-    check_adapters(profile, errors)
+    if args.request is not None:
+        doc = load_json(args.request.resolve(), errors)
+        if not errors:
+            errors.extend(validate_request_document(doc))
+    if args.response is not None:
+        doc = load_json(args.response.resolve(), errors)
+        if not errors:
+            errors.extend(validate_response_document(doc))
+    if args.all or (args.request is None and args.response is None):
+        check_schema(
+            MODELS / "llm-profile.schema.json",
+            "https://wellmanifest.dev/llm/v1/llm-profile.schema.json",
+            "wellmanifest.llm-profile/v1",
+            errors,
+        )
+        check_schema(
+            MODELS / "request.schema.json",
+            "https://wellmanifest.dev/llm/v1/request.schema.json",
+            "wellmanifest.llm-request/v1",
+            errors,
+        )
+        check_schema(
+            MODELS / "response.schema.json",
+            "https://wellmanifest.dev/llm/v1/response.schema.json",
+            "wellmanifest.llm-response/v1",
+            errors,
+        )
+        profile = check_profile(profile_path, errors)
+        check_adapters(profile, errors)
 
     if errors:
         for error in errors:

@@ -7,7 +7,19 @@ import argparse
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+
+_TOOLS_DIR = str(Path(__file__).resolve().parent)
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+
+from schema_validators import (  # noqa: E402
+    END,
+    START,
+    extract_marked_block,
+    extract_marked_span,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 ADAPTER_ROOT = ROOT / "docs" / "adapters"
@@ -29,8 +41,6 @@ DOCUMENTS = {
         Path(".wellmanifest/response.schema.json"),
     ),
 }
-START = "<!-- SUBACTOR-FIRST:START wellmanifest/llm v1 -->"
-END = "<!-- SUBACTOR-FIRST:END wellmanifest/llm v1 -->"
 HOSTS = {
     "codex": ("AGENTS.md", "AGENTS.md"),
     "claude": ("CLAUDE.md", "CLAUDE.md"),
@@ -40,13 +50,60 @@ HOSTS = {
     "generic": ("SUBACTOR.md", "SUBACTOR.md"),
 }
 
+__all__ = [
+    "DOCUMENTS",
+    "END",
+    "HOSTS",
+    "PlannedWrite",
+    "START",
+    "atomic_write",
+    "inside_target",
+    "main",
+    "marked_block",
+    "plan_adapter",
+    "plan_document",
+]
+
+
+@dataclass(frozen=True)
+class PlannedWrite:
+    action: str
+    subject: str
+    destination: Path
+    content: str | None = None
+    mode: int | None = None
+
+    def render(self, apply: bool) -> str:
+        if self.action == "UNCHANGED":
+            return f"UNCHANGED {self.subject} {self.destination}"
+        prefix = self.action if apply else f"WOULD-{self.action}"
+        return f"{prefix} {self.subject} {self.destination}"
+
 
 def inside_target(target: Path, destination: Path) -> bool:
+    try:
+        rel = destination.relative_to(target)
+    except ValueError:
+        return False
+    current = target
+    for part in rel.parts[:-1]:
+        current = current / part
+        if current.is_symlink():
+            return False
     try:
         destination.resolve(strict=False).relative_to(target)
         return True
     except ValueError:
         return False
+
+
+def _validate_destination(target: Path, destination: Path, label: str) -> None:
+    if not inside_target(target, destination):
+        raise ValueError(f"{label}: target escapes repository or traverses symlink")
+    if destination.is_symlink():
+        raise ValueError(f"{label}: refusing symlink target {destination}")
+    if destination.exists() and not destination.is_file():
+        raise ValueError(f"{label}: refusing non-regular target {destination}")
 
 
 def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
@@ -65,70 +122,66 @@ def atomic_write(path: Path, content: str, mode: int | None = None) -> None:
 
 
 def marked_block(text: str) -> str | None:
-    if START not in text and END not in text:
-        return None
-    if text.count(START) != 1 or text.count(END) != 1:
-        raise ValueError("malformed SUBACTOR-FIRST marker pair")
-    return text.split(START, 1)[1].split(END, 1)[0].strip()
+    block, err = extract_marked_block(text)
+    if err is not None:
+        raise ValueError(err)
+    return block
 
 
-def plan_adapter(target: Path, host: str, apply: bool) -> str:
+def build_adapter_plan(target: Path, host: str) -> PlannedWrite:
     source_name, target_name = HOSTS[host]
     source = (ADAPTER_ROOT / source_name).read_text(encoding="utf-8")
     destination = target / target_name
-    if not inside_target(target, destination):
-        raise ValueError(f"{host}: target escapes repository")
-    if destination.is_symlink():
-        raise ValueError(f"{host}: refusing symlink target {destination}")
+    _validate_destination(target, destination, host)
     source_block = marked_block(source)
     if source_block is None:
         raise ValueError(f"{host}: source adapter has no marker")
+    marker_span = extract_marked_span(source)
 
     if destination.exists():
         existing = destination.read_text(encoding="utf-8")
         existing_block = marked_block(existing)
         if existing_block == source_block:
-            return f"UNCHANGED {host} {destination}"
+            return PlannedWrite("UNCHANGED", host, destination)
         if existing_block is not None:
             raise ValueError(f"{host}: existing marked block differs in {destination}")
-        content = (
-            existing.rstrip() + "\n\n" + source[source.index(START) :].strip() + "\n"
-        )
-        action = "APPEND"
-        mode = destination.stat().st_mode
-    else:
-        content = source if source.endswith("\n") else source + "\n"
-        action = "CREATE"
-        mode = None
-    if apply:
-        atomic_write(destination, content, mode)
-    return f"{action if apply else 'WOULD-' + action} {host} {destination}"
+        stripped = existing.rstrip()
+        content = (f"{stripped}\n\n{marker_span}\n") if stripped else f"{marker_span}\n"
+        return PlannedWrite("APPEND", host, destination, content, destination.stat().st_mode)
+
+    content = source if source.endswith("\n") else source + "\n"
+    return PlannedWrite("CREATE", host, destination, content, None)
 
 
-def plan_document(target: Path, name: str, apply: bool, replace: bool) -> str:
+def build_document_plan(target: Path, name: str, replace: bool) -> PlannedWrite:
     source_path, target_path = DOCUMENTS[name]
     source = source_path.read_text(encoding="utf-8")
     destination = target / target_path
-    if not inside_target(target, destination):
-        raise ValueError(f"{name} target escapes repository")
-    if destination.is_symlink():
-        raise ValueError(f"refusing symlink target {destination}")
+    _validate_destination(target, destination, name)
     if destination.exists():
         existing = destination.read_text(encoding="utf-8")
         if existing == source:
-            return f"UNCHANGED {name} {destination}"
+            return PlannedWrite("UNCHANGED", name, destination)
         if not replace:
             raise ValueError(
                 f"{name} differs at {destination}; review and pass --replace-profile"
             )
-        action = "REPLACE"
-        mode = destination.stat().st_mode
-    else:
-        action = "CREATE"
-        mode = None
-    if apply:
-        atomic_write(destination, source, mode)
-    return f"{action if apply else 'WOULD-' + action} {name} {destination}"
+        return PlannedWrite("REPLACE", name, destination, source, destination.stat().st_mode)
+    return PlannedWrite("CREATE", name, destination, source, None)
+
+
+def plan_adapter(target: Path, host: str, apply: bool) -> str:
+    planned = build_adapter_plan(target, host)
+    if apply and planned.content is not None:
+        atomic_write(planned.destination, planned.content, planned.mode)
+    return planned.render(apply)
+
+
+def plan_document(target: Path, name: str, apply: bool, replace: bool) -> str:
+    planned = build_document_plan(target, name, replace)
+    if apply and planned.content is not None:
+        atomic_write(planned.destination, planned.content, planned.mode)
+    return planned.render(apply)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,15 +199,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.replace_profile and not args.apply:
         parser.error("--replace-profile requires --apply")
+    if args.target.is_symlink():
+        print(f"REFUSED target must not be a symlink: {args.target}", file=sys.stderr)
+        return 1
     target = args.target.resolve()
     if not target.is_dir():
         parser.error(f"target is not a directory: {target}")
     hosts = list(HOSTS) if args.host == "all" else [args.host]
     try:
-        for name in DOCUMENTS:
-            print(plan_document(target, name, args.apply, args.replace_profile))
-        for host in hosts:
-            print(plan_adapter(target, host, args.apply))
+        plans: list[PlannedWrite] = [
+            build_document_plan(target, name, args.replace_profile) for name in DOCUMENTS
+        ]
+        plans.extend(build_adapter_plan(target, host) for host in hosts)
+        for item in plans:
+            if args.apply and item.content is not None:
+                atomic_write(item.destination, item.content, item.mode)
+            print(item.render(args.apply))
     except (OSError, UnicodeError, ValueError) as exc:
         print(f"REFUSED {exc}", file=sys.stderr)
         return 1
