@@ -1,0 +1,89 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-012",
+  "summary": "Harden LLM inode identity, JSON overflow/surrogates, URI colons, and closed schemas",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-011/README.md",
+    "project/ticket-012/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/tools/conformance.py",
+    "docs/tools/install.py",
+    "docs/tools/schema_validators.py",
+    "docs/tools/test_llm_hardening.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a55caeb36ab4e171cd421aebd088c5f092f6c98b",
+    "targetBranch": "main",
+    "outcome": "Enforce lstat+fstat inode identity, ancestor symlink checks, and max_bytes bounds in read_regular_utf8 and atomic_write, reject 10**400 integer overflow and lone UTF-16 surrogates in strict JSON and request.intent, anchor regexes with \\A...\\Z, block colon-delimited URI traversal, enforce closed object schemas and iterative schema validation, and mark merged ticket-011 DONE.",
+    "nonGoals": [
+      "No runtime dependency additions",
+      "No normative adapter block modifications"
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Enforce TOCTOU-resistant inode verification, finite integer/UTF-8 bounds, and URI colon-segment safety in schema_validators.py, iterative closed-schema checks in conformance.py, and deep symlink ancestor guards in install.py.",
+      "components": [
+        {
+          "name": "llm-conformance-tools",
+          "paths": [
+            "docs/tools/schema_validators.py",
+            "docs/tools/conformance.py",
+            "docs/tools/install.py",
+            "docs/tools/test_llm_hardening.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the ticket-012 branch commit or close the pull request before merge."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "ruff check --no-cache docs/tools tests",
+          "pytest -q -p no:cacheprovider",
+          "python3 docs/tools/conformance.py --all"
+        ],
+        "evidence": "project/ticket-012/README.md"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "evidence": "project/ticket-012/README.md"
+      }
+    ]
+  }
+}

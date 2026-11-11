@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 TOOLS_DIR = Path(__file__).resolve().parent
 ROOT = TOOLS_DIR.parents[1]
@@ -213,6 +215,156 @@ class LlmHardeningTests(unittest.TestCase):
                 rc = install.main(["--host", "codex", "--target", str(repo), "--apply"])
             self.assertEqual(rc, 1)
             self.assertEqual(outside.read_text(encoding="utf-8"), "do not touch\n")
+
+    def test_strict_json_and_intent_reject_huge_integers_and_lone_surrogates(self) -> None:
+        huge_int = '{"x": ' + ("9" * 400) + "}"
+        for bad_json in (
+            huge_int,
+            '{"x": "\\ud800"}',
+            '{"\\udfff": 1}',
+            '{"x": "ok\ud800"}',
+        ):
+            with self.subTest(payload=bad_json[:24]):
+                with self.assertRaises(ValueError):
+                    schema_validators.loads_strict_json(bad_json)
+
+        req_overflow = _base_request()
+        req_overflow["intent"] = {"count": 10**400}
+        errs_ov = schema_validators.validate_request_document(req_overflow)
+        self.assertTrue(any("integer magnitude" in e for e in errs_ov), errs_ov)
+
+        req_surrogate = _base_request()
+        req_surrogate["intent"] = {"bad": "hello\ud800"}
+        errs_sur = schema_validators.validate_request_document(req_surrogate)
+        self.assertTrue(any("surrogate" in e for e in errs_sur), errs_sur)
+
+        req_key_sur = _base_request()
+        req_key_sur["intent"] = {"\ud800key": "ok"}
+        errs_ks = schema_validators.validate_request_document(req_key_sur)
+        self.assertTrue(any("surrogate" in e for e in errs_ks), errs_ks)
+
+    def test_read_regular_utf8_enforces_max_bytes_bounds_inode_identity_and_rel_ancestors(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            f = base / "sample.json"
+            f.write_text('{"ok": true}\n', encoding="utf-8")
+
+            for bad_max in (True, False, 0, -5):
+                with self.subTest(max_bytes=bad_max):
+                    with self.assertRaises(ValueError):
+                        schema_validators.read_regular_utf8(f, max_bytes=bad_max)  # type: ignore[arg-type]
+
+            real_fstat = os.fstat
+
+            def fake_fstat(fd: int) -> os.stat_result:
+                st = real_fstat(fd)
+                return os.stat_result(
+                    (
+                        st.st_mode,
+                        st.st_ino + 999999,
+                        st.st_dev,
+                        st.st_nlink,
+                        st.st_uid,
+                        st.st_gid,
+                        st.st_size,
+                        st.st_atime,
+                        st.st_mtime,
+                        st.st_ctime,
+                    )
+                )
+
+            with mock.patch("os.fstat", side_effect=fake_fstat):
+                with self.assertRaises(OSError) as ctx:
+                    schema_validators.read_regular_utf8(f)
+                self.assertIn("identity changed", str(ctx.exception))
+
+            outside = base / "outside"
+            outside.mkdir()
+            (outside / "secret.json").write_text('{"s": 1}\n', encoding="utf-8")
+            work = base / "work"
+            work.mkdir()
+            (work / "symdir").symlink_to(outside)
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(work)
+                with self.assertRaises(OSError):
+                    schema_validators.read_regular_utf8(Path("symdir/secret.json"))
+            finally:
+                os.chdir(old_cwd)
+
+    def test_colon_traversal_uris_and_trailing_newlines_are_rejected(self) -> None:
+        for bad_uri in (
+            "knowledge://subactor/foo:..:bar/v1",
+            "knowledge://subactor/:foo/v1",
+            "artifact://subactor/doc:./r1",
+            "observation://host/cpu?raw=1",
+            "observation://host/cpu#frag",
+        ):
+            with self.subTest(uri=bad_uri):
+                self.assertFalse(schema_validators.is_valid_context_ref(bad_uri))
+
+        req = _base_request()
+        req["requestId"] = "req-20261111-0099\n"
+        self.assertTrue(
+            any("requestId" in e for e in schema_validators.validate_request_document(req))
+        )
+
+        resp = _base_response()
+        resp["results"][0]["digest"] = "sha256:" + ("b" * 64) + "\n"
+        resp["receipt"]["startedAt"] = "2026-11-11T01:00:00Z\n"
+        resp_errs = schema_validators.validate_response_document(resp)
+        self.assertTrue(any("digest" in e for e in resp_errs), resp_errs)
+        self.assertTrue(any("RFC3339" in e for e in resp_errs), resp_errs)
+
+        self.assertIsNone(conformance.PROFILE_ID_RE.fullmatch("subactor-first\n"))
+        self.assertIsNone(conformance.SEMVER_RE.fullmatch("1.0.0\n"))
+        self.assertIsNone(conformance.ADOPT_RE.fullmatch("wellmanifest/llm\n"))
+
+    def test_closed_schema_assertion_and_iterative_schema_depth_guard(self) -> None:
+        open_schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "nested": {
+                    "type": "object",
+                    "properties": {"x": {"type": "string"}},
+                }
+            },
+        }
+        errs: list[str] = []
+        conformance.assert_closed_object_schemas(open_schema, "test.schema.json", errs)
+        self.assertTrue(any("must close additionalProperties" in e for e in errs), errs)
+
+        deep_doc: Any = {"leaf": 1}
+        deep_schema: Any = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"leaf": {"type": "integer"}},
+        }
+        for _ in range(70):
+            deep_doc = {"a": deep_doc}
+            deep_schema = {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"a": deep_schema},
+            }
+        depth_errs: list[str] = []
+        conformance.check_required_by_schema(deep_doc, deep_schema, depth_errs)
+        self.assertTrue(any("nesting depth exceeds maximum" in e for e in depth_errs), depth_errs)
+
+    def test_atomic_write_refuses_deep_symlink_ancestor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            outside = base / "outside"
+            outside.mkdir()
+            repo = base / "repo"
+            repo.mkdir()
+            (repo / "symdir").symlink_to(outside)
+            with self.assertRaises(ValueError):
+                install.atomic_write(repo / "symdir" / "nested" / "sub" / "out.md", "hi\n")
+            self.assertFalse((outside / "nested").exists())
 
 
 if __name__ == "__main__":

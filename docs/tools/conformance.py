@@ -16,6 +16,7 @@ if _TOOLS_DIR not in sys.path:
 
 from schema_validators import (  # noqa: E402
     END,
+    MAX_JSON_DEPTH,
     OPERATIONS,
     START,
     DuplicateKeyError,
@@ -30,9 +31,9 @@ from schema_validators import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "models"
 ADAPTERS = ROOT / "docs" / "adapters"
-PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
-SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-ADOPT_RE = re.compile(r"^wellmanifest/[a-z0-9-]+$")
+PROFILE_ID_RE = re.compile(r"\A[a-z0-9][a-z0-9.-]*\Z")
+SEMVER_RE = re.compile(r"\A[0-9]+\.[0-9]+\.[0-9]+\Z")
+ADOPT_RE = re.compile(r"\Awellmanifest/[a-z0-9-]+\Z")
 STEP_IDS = [
     "discover",
     "knowledge",
@@ -57,6 +58,7 @@ __all__ = [
     "END",
     "OPERATIONS",
     "START",
+    "assert_closed_object_schemas",
     "check_adapters",
     "check_profile",
     "check_required_by_schema",
@@ -119,6 +121,31 @@ def marked_block(path: Path, errors: list[str]) -> str:
     return block
 
 
+def assert_closed_object_schemas(
+    schema: Any, label: str, errors: list[str]
+) -> None:
+    """Require every object subschema to declare explicit closed or bounded additionalProperties."""
+    stack: list[tuple[Any, str, int]] = [(schema, label, 0)]
+    while stack:
+        node, where, depth = stack.pop()
+        if depth > MAX_JSON_DEPTH:
+            errors.append(f"{where}: schema nesting depth exceeds maximum ({MAX_JSON_DEPTH})")
+            return
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                addl = node.get("additionalProperties")
+                bounded_map = isinstance(addl, dict) and is_strict_int(node.get("maxProperties"))
+                if addl is not False and not bounded_map:
+                    errors.append(f"{where}: object schema must close additionalProperties")
+            for key, child in node.items():
+                if isinstance(child, (dict, list)):
+                    stack.append((child, f"{where}.{key}", depth + 1))
+        elif isinstance(node, list):
+            for idx, child in enumerate(node):
+                if isinstance(child, (dict, list)):
+                    stack.append((child, f"{where}[{idx}]", depth + 1))
+
+
 def check_schema(
     path: Path, schema_id: str, document_schema: str, errors: list[str]
 ) -> None:
@@ -131,6 +158,7 @@ def check_schema(
     require(value.get("$id") == schema_id, f"{path.name}: wrong $id", errors)
     require(value.get("type") == "object", f"{path.name}: root type must be object", errors)
     require(value.get("additionalProperties") is False, f"{path.name}: root must be closed", errors)
+    assert_closed_object_schemas(value, path.name, errors)
     properties = value.get("properties")
     require(isinstance(properties, dict), f"{path.name}: properties must be an object", errors)
     schema_property = properties.get("schema", {}) if isinstance(properties, dict) else {}
@@ -144,26 +172,33 @@ def check_schema(
 def check_required_by_schema(
     document: Any, schema: Any, errors: list[str], where: str = "profile"
 ) -> None:
-    """Enforce required and closed object properties declared in schema."""
-    if not isinstance(schema, dict):
-        return
-    if schema.get("type") == "object" and not isinstance(document, dict):
-        errors.append(f"{where}: expected object")
-        return
-    if not isinstance(document, dict):
-        return
-    if any(not isinstance(key, str) for key in document):
-        errors.append(f"{where}: object keys must be strings")
-    str_keys = {key for key in document if isinstance(key, str)}
-    for name in schema.get("required", []):
-        require(name in str_keys, f"{where}: missing required '{name}'", errors)
-    props = schema.get("properties")
-    if schema.get("additionalProperties") is False and isinstance(props, dict):
-        for extra in sorted(str_keys - set(props)):
-            errors.append(f"{where}: unknown property '{extra}'")
-    for name, child in (props or {}).items():
-        if name in str_keys:
-            check_required_by_schema(document[name], child, errors, f"{where}.{name}")
+    """Enforce required and closed object properties declared in schema without recursion."""
+    stack: list[tuple[Any, Any, str, int]] = [(document, schema, where, 0)]
+    while stack:
+        cur_doc, cur_schema, cur_where, depth = stack.pop()
+        if depth > MAX_JSON_DEPTH:
+            errors.append(f"{cur_where}: nesting depth exceeds maximum ({MAX_JSON_DEPTH})")
+            return
+        if not isinstance(cur_schema, dict):
+            continue
+        if cur_schema.get("type") == "object" and not isinstance(cur_doc, dict):
+            errors.append(f"{cur_where}: expected object")
+            continue
+        if not isinstance(cur_doc, dict):
+            continue
+        if any(not isinstance(key, str) for key in cur_doc):
+            errors.append(f"{cur_where}: object keys must be strings")
+        str_keys = {key for key in cur_doc if isinstance(key, str)}
+        for name in cur_schema.get("required", []):
+            require(name in str_keys, f"{cur_where}: missing required '{name}'", errors)
+        props = cur_schema.get("properties")
+        if cur_schema.get("additionalProperties") is False and isinstance(props, dict):
+            for extra in sorted(str_keys - set(props)):
+                errors.append(f"{cur_where}: unknown property '{extra}'")
+        if isinstance(props, dict):
+            for name, child in reversed(list(props.items())):
+                if name in str_keys:
+                    stack.append((cur_doc[name], child, f"{cur_where}.{name}", depth + 1))
 
 
 def _as_dict(parent: dict[str, Any], key: str) -> dict[str, Any]:
