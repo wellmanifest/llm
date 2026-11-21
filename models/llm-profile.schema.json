@@ -431,6 +431,12 @@
           "minimum": 0,
           "maximum": 65536,
           "description": "Largest evidence a runtime may spell out inside prompt text. Anything larger is written where the model can read it and named once, because the same text is also the query that selects context and would otherwise spend maxContextBytes explaining a failure instead of resolving the work."
+        },
+        "maxDecisionSliceBytes": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 1024,
+          "description": "Optional budget for structured state injected into fast small-model decision roles (e.g. roles.decision / 3B models). Must be <= maxInlineEvidenceBytes and <= maxContextBytes, supplied via prefix or single-URN lookup rather than unfiltered dumps (recommended 600 bytes; see wellmanifest/logs urtlog-bridge-profile/v1)."
         }
       }
     },

@@ -359,6 +359,27 @@ def check_profile(profile_path: Path, errors: list[str]) -> dict[str, Any]:
             f"profile.limits.{key}: must be integer in {lo}..{hi}",
             errors,
         )
+    if "maxDecisionSliceBytes" in limits:
+        slice_val = limits.get("maxDecisionSliceBytes")
+        require(
+            is_strict_int(slice_val) and 128 <= slice_val <= 1024,
+            "profile.limits.maxDecisionSliceBytes: must be integer in 128..1024",
+            errors,
+        )
+        inline_val = limits.get("maxInlineEvidenceBytes")
+        ctx_val = limits.get("maxContextBytes")
+        if is_strict_int(slice_val) and is_strict_int(inline_val):
+            require(
+                slice_val <= inline_val,
+                "profile.limits.maxDecisionSliceBytes: must be <= maxInlineEvidenceBytes",
+                errors,
+            )
+        if is_strict_int(slice_val) and is_strict_int(ctx_val):
+            require(
+                slice_val <= ctx_val,
+                "profile.limits.maxDecisionSliceBytes: must be <= maxContextBytes",
+                errors,
+            )
 
     receipt = _as_dict(profile, "receipt")
     for key in ("redacted", "immutableRefs", "recordRoute", "recordModel"):

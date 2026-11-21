@@ -84,6 +84,22 @@ Two rules follow.
   runtime enforces its own separate ceiling, it states the relationship to the
   declared one rather than competing with it.
 
+`llm-decision-slice-budget`
+: Fast small-model decision routes (such as `roles.decision` on 3B models) use
+  a tighter slice ceiling declared by `limits.maxDecisionSliceBytes` (default
+  `600` UTF-8 bytes, bounded `128..1024`, never exceeding
+  `limits.maxInlineEvidenceBytes`). Measured live on 2026-11-21 against
+  `oqllm-proxy` (`d1:3b`) with blind options over a real `planfile` DAG and
+  `UnifiedRegistry`: omitting operational state yielded 28.6% accuracy (2/7),
+  injecting an unfiltered 9 738 B dump raised accuracy to 85.7% (6/7) but
+  slowed median latency 3.2x (1 069.6 ms) and caused cross-ticket interference,
+  whereas B-tree prefix / single-URN slicing (`402`–`547` B) achieved
+  85.7%–100.0% accuracy in 337–345 ms. Runtimes supplying operational slices to
+  decision models MUST query by prefix or single entity URN rather than
+  injecting unfiltered dumps; see `wellmanifest/logs`
+  (`wellmanifest.logs/urtlog-bridge-profile/v1`) for the companion telemetry
+  bridge and registry contract.
+
 External provenance URLs are evidence, not runtime dependencies. Durable
 assumptions use versioned `knowledge://subactor/.../vN` references; managed
 text uses `artifact://subactor/.../rN` references.
