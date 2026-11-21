@@ -1,0 +1,89 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-016",
+  "summary": "Extend wellmanifest/llm with bounded small-model decision slice budget",
+  "workstream": "integration",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-016/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "models/llm-profile.schema.json",
+    "models/subactor-first.v1.json",
+    "docs/ARCHITECTURE.md",
+    "docs/tools/conformance.py",
+    "docs/tools/test_decision_slice_budget.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "26662f545837dfd2c6a55d9e08cc5735fe750a2f",
+    "targetBranch": "main",
+    "outcome": "Add optional backward-compatible limits.maxDecisionSliceBytes (128..1024, reference 600) to wellmanifest/llm v1 profile/schema/conformance checker and document the llm-decision-slice-budget rule backed by 2026-11-21 live d1:3b A/B/C evidence.",
+    "nonGoals": [
+      "No breaking changes to existing adopted wellmanifest.llm-profile/v1 consumers omitting maxDecisionSliceBytes",
+      "No SubLLM runtime routing implementation inside wellmanifest/llm"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 25,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extend models/llm-profile.schema.json additively with optional limits.maxDecisionSliceBytes (128..1024), set 600 in models/subactor-first.v1.json, validate its range and budget hierarchy in docs/tools/conformance.py, add adversarial tests in docs/tools/test_decision_slice_budget.py, and document llm-decision-slice-budget in docs/ARCHITECTURE.md.",
+      "components": [
+        {
+          "name": "llm-profile-contract",
+          "paths": [
+            "models/llm-profile.schema.json",
+            "models/subactor-first.v1.json",
+            "docs/ARCHITECTURE.md"
+          ]
+        },
+        {
+          "name": "llm-conformance",
+          "paths": [
+            "docs/tools/conformance.py",
+            "docs/tools/test_decision_slice_budget.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Additive optional property limits.maxDecisionSliceBytes on wellmanifest.llm-profile/v1"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-016 commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "make verify",
+          "python3 -m unittest discover -s docs/tools -p 'test_*.py'",
+          "python3 -m unittest discover -s tests -p 'test_*.py'"
+        ],
+        "evidence": "make verify, conformance checks, existing regression tests, and new decision-slice budget tests all pass."
+      }
+    ]
+  }
+}

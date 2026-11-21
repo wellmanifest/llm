@@ -101,7 +101,8 @@
     "maxContextBytes": 131072,
     "maxObservationSeconds": 60,
     "maxExternalQueries": 4,
-    "maxInlineEvidenceBytes": 2048
+    "maxInlineEvidenceBytes": 2048,
+    "maxDecisionSliceBytes": 600
   },
   "receipt": {
     "redacted": true,
